@@ -1,0 +1,13 @@
+services:
+  weft:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "127.0.0.1:9099:8000"
+    volumes:
+      - ./data:/data
+    env_file: .env
+    environment:
+      WEFT_OPENAI_CALLBACK_PORT: "9099"
+    restart: unless-stopped

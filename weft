@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import plistlib
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from urllib.error import URLError
+from urllib.request import ProxyHandler, build_opener
+
+
+ROOT = Path(__file__).resolve().parent
+STATE = ROOT / "data" / "launcher"
+LABEL = "com.weft.dev." + hashlib.sha256(str(ROOT).encode()).hexdigest()[:12]
+DOMAIN = f"gui/{os.getuid()}"
+TARGET = f"{DOMAIN}/{LABEL}"
+PLIST = STATE / "service.plist"
+LOG = STATE / "service.log"
+ACTIONS = ("start", "stop", "restart", "open", "status", "logs")
+HTTP = build_opener(ProxyHandler({}))
+
+
+def run(arguments, *, check=True, timeout=10):
+    result = subprocess.run(arguments, capture_output=True, text=True, timeout=timeout)
+    if check and result.returncode:
+        raise RuntimeError(f"{Path(arguments[0]).name} failed (exit {result.returncode}).")
+    return result
+
+
+@contextmanager
+def locked():
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    STATE.chmod(0o700)
+    with (STATE / "control.lock").open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
+def job():
+    result = run(["launchctl", "print", TARGET], check=False)
+    if result.returncode:
+        return None
+    fields = {}
+    for line in result.stdout.splitlines():
+        key, separator, value = line.strip().partition(" = ")
+        if separator:
+            fields.setdefault(key, value)
+    if (
+        fields.get("path") != str(PLIST)
+        or fields.get("program") != "/bin/bash"
+        or fields.get("working directory") != str(ROOT)
+    ):
+        raise RuntimeError("The loaded service does not belong to this checkout; refusing to control it.")
+    with PLIST.open("rb") as handle:
+        definition = plistlib.load(handle)
+    arguments = ["/bin/bash", str(ROOT / "scripts" / "dev-local.sh")]
+    if definition.get("ProgramArguments") != arguments:
+        raise RuntimeError("The saved service definition does not match this launcher.")
+    loaded_arguments = result.stdout.partition("arguments = {\n")[2].partition("\n\t}")[0]
+    if [line.strip() for line in loaded_arguments.splitlines()] != arguments:
+        raise RuntimeError("The loaded service command does not match this launcher.")
+    return {
+        "pid": int(fields["pid"]) if "pid" in fields else None,
+        "exit_code": fields.get("last exit code"),
+        "environment": definition["EnvironmentVariables"],
+    }
+
+
+def listeners(port):
+    result = run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"], check=False)
+    return {int(value) for value in result.stdout.split() if value.isdigit()}
+
+
+def descendants(pid):
+    owned = {pid} if pid else set()
+    rows = run(["ps", "-axo", "pid=,ppid="]).stdout.splitlines()
+    pairs = [tuple(map(int, row.split())) for row in rows]
+    while True:
+        children = {child for child, parent in pairs if parent in owned}
+        if children.issubset(owned):
+            return owned
+        owned.update(children)
+
+
+def unmanaged_backend():
+    for line in run(["ps", "-axo", "pid=,command="]).stdout.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2:
+            continue
+        pid, command = parts
+        try:
+            arguments = shlex.split(command)
+        except ValueError:
+            continue
+        if "app.main:app" not in arguments or not any(Path(value).name == "uvicorn" for value in arguments):
+            continue
+        cwd = run(["lsof", "-a", "-p", pid, "-d", "cwd", "-Fn"], check=False).stdout
+        if any(line == f"n{directory}" for line in cwd.splitlines() for directory in (ROOT, ROOT / "backend")):
+            return pid
+    return None
+
+
+def ports(environment):
+    values = int(environment.get("PORT", "9099")), int(environment.get("WEFT_BACKEND_PORT", "8000"))
+    if any(not 1024 <= port <= 65535 for port in values) or values[0] == values[1]:
+        raise RuntimeError("PORT and WEFT_BACKEND_PORT must be different ports between 1024 and 65535.")
+    return values
+
+
+def ready(service):
+    if not service or not service["pid"]:
+        return False
+    frontend, backend = ports(service["environment"])
+    owned = descendants(service["pid"])
+    for port in (frontend, backend):
+        pids = listeners(port)
+        if not pids or not pids.issubset(owned):
+            return False
+    try:
+        with HTTP.open(f"http://127.0.0.1:{backend}/health", timeout=1) as response:
+            if json.load(response) != {"status": "ok"}:
+                return False
+        with HTTP.open(f"http://localhost:{frontend}/@vite/client", timeout=1) as response:
+            return response.status == 200
+    except (OSError, URLError, ValueError):
+        return False
+
+
+def start(configuration=None):
+    service = job()
+    if service:
+        if ready(service):
+            print(f"Weft is already running at http://localhost:{ports(service['environment'])[0]}.")
+            return
+        raise RuntimeError("The managed service is not ready. Check logs, then restart it.")
+    if pid := unmanaged_backend():
+        raise RuntimeError(f"Weft is already running outside this launcher (PID {pid}). Stop that launch terminal before starting here.")
+    configuration = os.environ if configuration is None else configuration
+    frontend, backend = ports(configuration)
+    for port in (frontend, backend):
+        if listeners(port):
+            raise RuntimeError(f"Port {port} is occupied. Stop its service or select different ports explicitly.")
+    for command in ("uv", "npm", "node"):
+        if not shutil.which(command):
+            raise RuntimeError(f"{command} is missing. Follow README local-development setup.")
+    if not (ROOT / "frontend" / "node_modules" / ".bin" / "vite").is_file():
+        raise RuntimeError("Frontend dependencies are missing. Run npm ci in frontend first.")
+    environment = {"PATH": configuration["PATH"], "PORT": str(frontend), "WEFT_BACKEND_PORT": str(backend)}
+    for key in ("WEFT_DEV_SECRET", "WEFT_LOG_DIR"):
+        if key in configuration:
+            environment[key] = configuration[key]
+    if LOG.exists():
+        LOG.replace(LOG.with_suffix(".log.previous"))
+    LOG.touch(mode=0o600)
+    with PLIST.open("wb") as handle:
+        plistlib.dump({
+            "Label": LABEL,
+            "ProgramArguments": ["/bin/bash", str(ROOT / "scripts" / "dev-local.sh")],
+            "WorkingDirectory": str(ROOT),
+            "EnvironmentVariables": environment,
+            "RunAtLoad": True,
+            "KeepAlive": False,
+            "ExitTimeOut": 30,
+            "AbandonProcessGroup": False,
+            "Umask": 0o077,
+            "StandardOutPath": str(LOG),
+            "StandardErrorPath": str(LOG),
+        }, handle)
+    PLIST.chmod(0o600)
+    run(["launchctl", "bootstrap", DOMAIN, str(PLIST)])
+    print("Starting Weft…", flush=True)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        service = job()
+        if ready(service):
+            print(f"Weft is running at http://localhost:{frontend}.")
+            return
+        if service and not service["pid"] and service["exit_code"] not in (None, "(never exited)"):
+            raise RuntimeError("The development service exited during startup. Check logs, then restart it.")
+        time.sleep(0.25)
+    raise RuntimeError("Startup did not become ready within 30 seconds. Check logs; use Stop or Restart to control this attempt.")
+
+
+def stop():
+    service = job()
+    if not service:
+        if pid := unmanaged_backend():
+            raise RuntimeError(f"Weft PID {pid} belongs to another launch terminal. Stop it there; this launcher will not stop it.")
+        print("The managed Weft service is stopped.")
+        return
+    owned = descendants(service["pid"])
+    run(["launchctl", "bootout", TARGET], timeout=40)
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        remaining = set().union(*(listeners(port) for port in ports(service["environment"]))) & owned
+        if not remaining:
+            print("Weft stopped.")
+            return
+        time.sleep(0.25)
+    raise RuntimeError("The service was unloaded but an owned listener remains. Inspect status before starting again.")
+
+
+def perform(action):
+    with locked():
+        if action == "start":
+            start()
+        elif action == "stop":
+            stop()
+        elif action == "restart":
+            service = job()
+            stop()
+            start(service["environment"] if service else None)
+        elif action == "logs":
+            if LOG.exists():
+                print(run(["tail", "-n", "100", str(LOG)]).stdout, end="")
+            else:
+                print("No launcher logs yet.")
+        else:
+            service = job()
+            healthy = ready(service)
+            if action == "open":
+                if not healthy:
+                    raise RuntimeError("Weft is not ready. Start it first, or inspect its logs.")
+                run(["open", "-a", "Google Chrome", f"http://localhost:{ports(service['environment'])[0]}"])
+            elif healthy:
+                print(f"Weft is running at http://localhost:{ports(service['environment'])[0]} (PID {service['pid']}).")
+            elif service:
+                print("Weft is not ready. Check logs, then restart it.")
+            elif pid := unmanaged_backend():
+                print(f"Weft is running outside this launcher (PID {pid}). Its launch terminal owns it.")
+            else:
+                print("Weft is stopped.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Manage Weft's local development servers on macOS.")
+    parser.add_argument("action", nargs="?", choices=ACTIONS, help="omit to open the menu")
+    arguments = parser.parse_args()
+    if sys.platform != "darwin":
+        parser.error("This launcher requires macOS. See README for Docker.")
+    os.umask(0o077)
+    os.environ["PATH"] = os.pathsep.join([os.environ.get("PATH", ""), "/opt/homebrew/bin", "/usr/local/bin", str(Path.home() / ".local/bin")])
+    try:
+        if arguments.action:
+            perform(arguments.action)
+            return 0
+        while True:
+            print("\nWeft — Development")
+            for index, action in enumerate(ACTIONS, 1):
+                print(f"{index}. {'Open browser' if action == 'open' else action.title()}")
+            print("7. Exit menu (leave servers running)")
+            choice = input("Select an action: ").strip()
+            if choice == "7":
+                return 0
+            if choice.isdigit() and 1 <= int(choice) <= len(ACTIONS):
+                try:
+                    perform(ACTIONS[int(choice) - 1])
+                except (RuntimeError, OSError, ValueError, subprocess.TimeoutExpired) as error:
+                    print(f"Error: {error}")
+            else:
+                print("Choose one of the numbered actions.")
+    except EOFError:
+        print("\nMenu closed; any managed servers remain under ./weft status and stop.")
+        return 0
+    except KeyboardInterrupt:
+        print("\nInterrupted. Check ./weft status before retrying.")
+        return 130
+    except (RuntimeError, OSError, ValueError, subprocess.TimeoutExpired) as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,21 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Private account register backend"
+license = "PolyForm-Noncommercial-1.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.11.3",
+    "certifi>=2026.10.19",
+    "cryptography>=49.0.0",
+    "fastapi>=0.139.0",
+    "itsdangerous>=2.2.0",
+    "httpx>=0.28.1",
+    "PyJWT[crypto]>=2.10.1",
+    "plaid-python>=40.1.0",
+    "python-multipart>=0.0.20",
+    "sqlalchemy>=2",
+    "uvicorn[standard]>=0.50.2",
+    "pyrage>=1.4.0,<2",
+    "pillow>=13.0.0",
+]

@@ -1,0 +1,125 @@
+# System and installation
+
+This file is part of the [product contract](../PRODUCT_CONTRACT.md). It owns the approved requirements for the sections below.
+
+## Session
+
+- Login passwords are optional for this local single-user installation. New installations start password-free. Preserve an existing installation's saved password policy until the user explicitly changes or removes it. System settings provides a Security section with Require password and set/change/remove actions. Enabled passwords contain at least 12 characters; changing or removing one requires the current password. The new password must be confirmed in the form.
+
+- Store only a salted slow password hash and random session revision in owner-only atomic installation storage outside financial backups. The password file is the sole runtime password source; environment passwords are not read. Every authentication check rereads the file. Missing or unreadable state on an existing database fails closed. Create password-free state before a genuinely new database, never after silently discarding existing protection. A stopped-app local reset needs an existing database path and private prompts; only an explicit removal option disables protection. Preserve an existing authentication file privately before reset.
+
+- Password-free mode automatically establishes the same HTTP-only session through same-origin login. Every API retains its session check and the local browser boundary. Without a password, other people/accounts and programs on this computer can open the app, export data and change settings, including recovery keys. State this beside the switch and in setup guidance. Do not promise that closing a browser ends its session.
+
+- A password save uses the named installation-security file boundary: serialize changes, recheck the session and expected revision, verify the current password when enabled, and atomically persist/read back a new random revision before renewing the submitting browser's cookie. Older cookies fail. Already admitted work can finish. This write has no ledger Undo entry, does not wait on financial maintenance, and never changes WEFT_SECRET or financial/provider data. An uncertain result requires reload, sign-in if needed, and fresh inspection before another attempt; never replay it automatically.
+
+- Runtime startup and stopped-app financial restore still require a machine-generated 32-byte installation key encoded as 64 lowercase hexadecimal characters. Reject an unsafe key before opening saved data. Never generate or replace an existing encryption key at startup.
+
+- Supported listeners are local only. The development servers bind to 127.0.0.1; Docker publishes its port on 127.0.0.1. Accept only localhost, 127.0.0.1 or [::1] request hosts. Ignore forwarded headers for trust. A supplied Origin must match the request scheme, host and port. Login and unsafe API methods require that Origin. API requests reject cross-site and same-site Fetch Metadata. The OpenAI GET callback is exempt from the Fetch Metadata check; it still validates any supplied Origin and requires its existing state and nonce checks. Headerless nonbrowser reads still require the normal session.
+
+- Every application API requires that session. The OpenAI loopback authorization callback is the narrow exception; it requires a valid, unexpired, single-use authorization attempt and cannot establish a Weft session.
+
+- A failed user-submitted login stays on the login form with an actionable error.
+
+- Any later `401` returns the app to login and clears stale client data.
+
+There are no user profiles, roles, logout workflow, or public-internet deployment guarantees.
+
+## Plaid settings
+
+- System settings offers an installation-wide Plaid tab. Each installation uses its own Plaid developer account. Guide the user to the Dashboard for Client ID and Secret; bank sign-in remains the separate Link flow.
+- New installations default to real banks (Production). Advanced offers Sandbox for an isolated test installation. Existing installations retain their effective environment. Weft remains local and self-hosted; managed connections and SaaS are excluded from this change.
+- Persist one stable Plaid Link user ID in that credential profile. New installations generate it once; later credential saves retain it. The approved one-time security transition preserves the current derived ID while replacing the weak installation key and re-encrypting bank tokens, Plaid settings and OpenAI state. Verify isolated candidates and coordinated rollback before promotion; financial values and provider connections must remain unchanged. No runtime old-profile reader remains.
+- Store one credential profile in encrypted owner-only installation storage outside financial backups and source control. Write atomically. Saved Secrets are write-only; never return them, log them or store them in browser storage. Preserve WEFT_SECRET independently.
+- Save applies only the explicit draft, requires the current configuration revision and does not test credentials, connect a bank, sync, revoke Items, delete data or release the restore pause. A blank Secret retains it only for unchanged identity. Changing identity requires a new Secret.
+- Each retained Item records its Client ID fingerprint and environment, including staged or cleanup custody. Settings and provider admission must match those records. Allow same-identity Secret replacement and entry of credentials matching restored custody even when current settings differ. Refuse unrelated identity/environment changes until retained bank custody is explicitly resolved. Disconnection preserves financial history.
+- Reuse the existing request maintenance gate and provider-job maintenance lock for Save. An SDK client captures one immutable credential snapshot and checks retained custody in its caller's database session. Reject a stale new-login exchange before consuming its public token when the Link identity differs. Same-identity Secret replacement does not invalidate Link.
+- Missing or unreadable Plaid API settings must not block startup, local register use or financial recovery. A manual-only restore can release the sync pause without Plaid setup; retained bank custody requires configured matching identity before that release.
+- Check credentials tests only the saved configuration through an authenticated non-Item request after an explicit click. It creates no Item and reads no financial data. Success proves credential acceptance only, not bank coverage or Transactions access. Block it while bank activity is paused after restore.
+- Plaid setup writes use the named provider-settings boundary outside ledger Undo. After an uncertain settings-write response, reread authoritative settings before another dependent operation. Preserve saved financial data on failures. No request is replayed automatically.
+- Explain that free Weft does not guarantee Plaid plan eligibility or free service. Trial limits count connection creations, including duplicates; deletion does not replenish them. Offer existing-login reuse/repair and an intentional new-login path. Never claim remaining provider allowance from local Item counts.
+- The runtime reads no PLAID_* environment variables. The saved profile and settings tab own setup and credential changes. Updates must preserve the saved provider identity and credentials under the data-protection rules.
+
+## AI settings and OpenAI connection
+
+- System settings offers an AI section with an installation-wide Disable all AI switch, initially enabled. Connecting ChatGPT does not enable AI or authorize sharing ledger data.
+- The switch label states whether AI features are currently enabled or disabled. While AI is disabled, the connection, model and check sections below it appear dimmed. They return to full strength on hover or focus and remain usable under the rule below.
+- OpenAI connection uses the documented locally hosted Sign in with ChatGPT flow. Continue with ChatGPT requests identity and ChatGPT plan-use permissions, with PKCE, state, nonce and verified issuer/audience/signature/expiry.
+- Keep the Weft password session separate. Provider auth/usage failures must not return the application-login `401` or silently change models or billing sources.
+- Show the active ChatGPT registration and allow a saved registration to reconnect or another account/workspace to connect. Keep issued client IDs, verified identities and credential sets separate; email alone does not identify a registration.
+- Store connection credentials, registration identity, the AI switch and selected model in encrypted owner-only installation storage outside database backups and source control. Write atomically; serialize rotating-token refresh. Ordinary database restore does not replace these settings or credentials.
+- Disconnect stops requests, attempts renewable-session revocation, and clears local access, refresh and retained ID tokens. Keep registration identity for reconnect. If revocation cannot be confirmed, disclose that and link to ChatGPT settings.
+- The global model selector uses the active registration's current eligible catalog. Preserve an unavailable selection visibly and require a new explicit choice. Never fall back automatically.
+- Show ChatGPT plan-use permission separately from identity login. Explain plan usage on the first enabled connection, and offer Manage usage. Signing in alone is not proof that inference is available.
+- Check connection sends a fixed synthetic example only after AI is enabled and the user explicitly starts the check. It uses the selected model and requires completed, validated output. It never reads or sends ledger data.
+- AI-disabled admission blocks inference on the server. Connection management and model discovery remain available. Re-enabling does not start requests automatically.
+- Provider settings and connection writes use the named OpenAI provider boundary, with no ledger Undo entry. After an uncertain provider-write response, reread authoritative state before another dependent operation. Synthetic check failure must not imply success or trigger a billing fallback.
+- The browser-reachable callback uses `http://127.0.0.1:<configured-port>/auth/callback` on the existing backend server. It consumes the pending attempt once, returns a minimal connection-result page and leaves the original app to read status. No provider token appears in browser responses, logs or diagnostics.
+
+## Diagnostics download
+
+System settings also provides an explicit Diagnostics download containing bounded recent server events and current-page browser events.
+
+- Local server diagnostics retain allowlisted operational codes, IDs, timing, outcomes, and stack locations, with separate warning/error report quotas.
+- They exclude credentials, financial values, names, payloads, query strings, and raw exception messages.
+- Browser diagnostics remain in memory and are never uploaded automatically.
+- If the server is unavailable or rendering fails, the browser can download its own diagnostics before reloading.
+- Reports remain private operational records.
+- Logging failures do not change save outcomes, and diagnostic IDs remain separate from ledger history request IDs.
+- The same diagnostics system records committed matching decisions, association corrections and rejection, sampled blocked-decision summaries, and relationship-bearing provider changes. It retains local identities, database generation, rule version, date distances, evidence checks and competition counts without financial values or raw provider IDs.
+- The existing ledger write context publishes observations after outer commit. Root rollback and session disposal publish none; instrumentation does not stage inside scheduled-entry savepoints. It does not change matching policy or provider history.
+- Blocked observations are grouped by workflow, account and reason with up to two examples. An unchanged summary is suppressed by a bounded process-local cache. Transaction limits and existing rotation/report quotas make this sampled operational evidence, not a permanent or exhaustive audit trail.
+
+## Backup restore
+
+System settings provides opt-in encrypted disaster-recovery backup and whole-dataset restore. [CSV export](register.md#csv-export) remains a separate feature. The package uses age encryption and a separately saved recovery key; operating instructions live in [README](../OPERATIONS.md#backups-and-restore).
+
+### Backup setup and recovery keys
+
+- Backup configuration is optional. Setup begins only when the user explicitly requests their first backup. Ordinary installation, startup, account creation and register use require no backup setup, key storage, warning badges or backup reminders.
+- Initial setup creates a public/private recovery key pair. The user saves the private recovery key separately and confirms it before the first backup is completed. Cancelling setup leaves ordinary use available and must not claim that a backup exists.
+- The installation retains only the public encryption key in installation-local storage outside the financial database. It must not persist the private recovery key in the database, package, browser storage, logs or diagnostics.
+- When a password is enabled, creating later backups requires the current login-password confirmation and uses the configured public key without requiring the private recovery key. Preview and restore require the package's matching private recovery key. The user can restore an existing package without initializing a new backup key first.
+- When a password is enabled, key setup and replacement require current-password confirmation. When disabled, keep explicit setup/download/replacement actions without a password field; accept stale supplied password values. Backup and restore status must refresh after a password save or a bad-password response. Changing the login password does not change the recovery key. Replacing a recovery key protects future backups only; older backups still require their original keys.
+- If the working installation is available, a user who lost their recovery key can set up a new key and create a new backup without supplying the lost key. If both the working installation and the matching recovery key are lost, those encrypted backups cannot be recovered.
+- Rollback preserves the destination's current public backup key rather than restoring an older one from financial data. Fresh-install recovery adopts the public key corresponding to the recovery key supplied by the user. Retain an old private key until its replacement backup has passed a recovery rehearsal.
+
+### Backup contents and file
+
+- One encrypted Weft backup package contains all saved financial records and relationships: accounts and account settings, the complete imported icon library and its selections, saved balances and open/closed status; transactions and allocations, memos, flags and review/clearance state; categories and subcategories; payees, defaults and rules; schedules and recurrence settings; starting balances and initialization; matches and transfers; bank credentials, mappings, source provenance and sync progress.
+- Exclude the installation password file, separate Plaid API credential file and OpenAI connection and settings file, browser-local presentation preferences, temporary Undo/Redo, sessions, pending requests, diagnostics and machine paths. Fresh recovery requires OpenAI reauthentication; ordinary financial-data rollback leaves the destination's OpenAI state alone.
+- Encrypt the whole user-facing package and protect it against undetected ciphertext modification with an established maintained encryption format. Decryption does not prove who created the package; treat every file as untrusted and validate its contents before replacement or provider activity.
+- Rewrap bank credentials for the package, then encrypt them under the destination installation secret during restore preparation. Recovery must not depend on the original installation secret or configuration files. Do not bundle that source secret or provider application secrets. Bank connectivity still requires compatible destination provider configuration; recovering financial data does not require a successful provider call.
+- Keep plaintext bank tokens out of temporary files and ordinary browser responses. Temporary financial database files must be owner-only and removed after use. Enforce bounded encrypted input and decrypted payload sizes. The maximum downloadable/restorable package remains 256 MiB, shown as 256 MB in the UI.
+- The encrypted package replaces the raw user-facing SQLite download, and the stopped-app recovery path uses that same current package format. Raw SQLite copies remain internal local safety/recovery artifacts.
+- Retain a verified current package off the live machine and keep its recovery key independently. A backup on the same machine alone does not protect against losing that machine. No automatic schedule, cloud destination or backup browser is included.
+
+### Restore admission and replacement
+
+- Restore replaces the entire saved financial dataset. It does not merge datasets or selectively import accounts. Preview account names, Working balances and latest ordinary-visible transaction dates, excluding starting-balance entries, before explicit replacement confirmation; require the current password only when enabled. Financial restore preserves destination password settings. A fresh-machine restore starts password-free.
+- Allow rollback of the current installation only with unchanged Plaid Item identities and account mappings. Also allow recovery into an empty installation with no user accounts, bank-connection records or staged conversion. Default seeded categories and managed payees do not make a fresh installation populated.
+- Refuse replacement over populated installations with different bank custody. Do not implicitly revoke, merge or abandon destination bank connections. An unfinished account conversion blocks backup and restore.
+- Accept only the current backup format and exact current schema. Weft is v0 pre-alpha; backward compatibility remains excluded until the owner explicitly approves it. Unsupported backups remain unchanged and must not replace saved data. Each schema upgrade must produce and verify a fresh current-format backup before acceptance.
+- Validate decryption, payload bounds, exact database structure, integrity, foreign keys and required saved-data rules before promotion. Reject wrong-key, invalid, corrupt, oversized, unsupported or ineligible files without replacing saved data.
+- Restore discards later local edits. Preserve a private pre-restore safety copy when existing saved data is present. Block new database work, drain in-flight work, pause provider jobs, clear disposable sync counts/notices in the validated copy, and recover from the safety copy if replacement fails.
+- There is one active database and one runtime. Backups are not alternate live databases. Rotate the installation-local database-generation marker before replacement, including a safety-copy fallback. The marker remains separate from downloaded backups, survives restarts and forces other tabs to reload before saving.
+- Preserve existing account IDs, ledger relationships, initialization and provider identity facts. A compatible backup can recover financial data on a fresh installation without the original machine, login configuration or installation secret. Invalid or expired bank authorizations may still require repair or reconnection.
+
+### Bank activity after restore
+
+- After a restore, keep bank-provider activity paused persistently, including across restarts. Startup sync, background refresh, status polling and automatic retries must not release the pause.
+- Replace the Last Synced message with a red label: **Bank sync paused after restore — press Sync Plaid to resume.** Its visible text must explain the state without relying on color alone.
+- The first admitted manual press of **Sync Plaid** releases the pause and starts the normal manual sync workflow. Do not add a separate resume button or confirmation. A failed provider refresh uses the normal error/repair behavior and does not reinstate the recovery pause.
+- Until that action, block all bank-provider calls, including repair, disconnect and deletion-triggered revocation. The resume action itself remains available through the existing workspace and write-admission guards. Local reading and actions that require no bank-provider call remain available.
+- Once the manual action releases the pause, restore the ordinary last-sync/status presentation and startup/background policy. Subsequent counts and notices come from the normal sync workflow. Restored bank activity can reappear for review.
+
+## Data protection and schema upgrades
+
+- The runtime supports only its current schema. A schema-changing update requires an explicitly reviewed one-time preservation procedure for the exact existing schema; there is no automatic or multi-version upgrade service. Do not wipe or reseed saved data to accommodate a schema change. Keep only the resulting current schema and runtime, without migration files, a migration chain or automatic startup upgrades. Stop the app, retain private recovery data/source/configuration and original secrets, validate an isolated candidate, then promote it and invalidate stale page sessions before normal work resumes. Remove temporary upgrade tooling after acceptance. Take and verify a fresh current-format backup before accepting the upgrade. This policy does not authorize executing an unspecified schema change.
+- Keep a verified current-format backup and its recovery key separately. Preserve the live database, active configuration, installation secret and separate OpenAI state. Retain protection for an ongoing upgrade or recovery until acceptance. Backup retention is an operator decision; the app never automatically deletes recovery files.
+- [schema.sql](../../backend/app/schema.sql) defines the current format and its revision. Startup and restore refuse databases and backups with a different schema without modifying them.
+- Protect the current installation's saved data. Only explicitly designated isolated test data is disposable. Changes to other persisted formats follow the same rule.
+- Preserve accounts, transactions and split allocations, payees and rules, categories and assignments, schedules and occurrence records, matches, transfers, review/clearance state, initialization and starting balances, and provider custody, mappings and cursors. Ordinary restarts preserve their identities and relationships. Existing confirmation rules for deletion, restore and Re-init still apply. Temporary page-session history, sync notices and diagnostics retain their documented lifetimes.
+- Startup and restore validate the current revision, schema, integrity, foreign keys, saved payee-rule amount directions and icon-library image/size rules. Amount objects require Inflow or Outflow; rules without an amount condition remain valid. Unsupported directions are refused after the structure check. Incompatible or unreadable files are refused without replacement or deletion. Refusal is the supported behavior, not an unfinished compatibility feature.
+- A future schema change must state how it handles the current installation before execution. Validate the change on isolated data before provider jobs or ordinary writes resume, and invalidate stale page-session writes when required. This does not require support for historical formats.
+- A destructive reset requires explicit owner approval of the data lost and retained and a private recovery copy. Preserve the installation secret and separately stored OpenAI connection state unless their removal is explicitly approved. If the recovery copy cannot be validated, preserve the available original files and disclose the limit before execution. A schema mismatch never authorizes deletion.
+- Plaid tokens never appear in ordinary browser responses or user-facing logs. An explicitly requested encrypted backup download, with password confirmation when enabled, is the sole browser-response exception and carries protected credential records inside the encrypted package. Plaintext tokens are never returned.
