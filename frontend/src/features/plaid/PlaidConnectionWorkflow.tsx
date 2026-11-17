@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { usePlaidLink } from 'react-plaid-link'
+import { PlaidLinkLauncher, type PlaidLinkHandlers } from './PlaidLinkLauncher'
 import { ApiError, apiClient } from '../../api/client'
 import { invalidateAccountAndTransactionQueries } from '../../api/hooks'
 import { Button } from '../../components/Button'
@@ -73,8 +73,7 @@ export function PlaidConnectionWorkflow({ compact = false, onError }: PlaidConne
       onError(error instanceof ApiError ? error.message : 'Could not start Plaid Link.'),
   })
 
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
+  const plaidLinkHandlers: PlaidLinkHandlers = {
     onSuccess: (token, metadata) => {
       recordDiagnostic('plaid.link_succeeded', 'info', { account_count: metadata.accounts.length })
       // Unmount Plaid's full-screen frame before showing our account-mapping dialog.
@@ -94,11 +93,7 @@ export function PlaidConnectionWorkflow({ compact = false, onError }: PlaidConne
       if (error) onError(error.display_message || error.error_message || 'Plaid Link closed with an error.')
       setLinkToken(null)
     },
-  })
-
-  useEffect(() => {
-    if (linkToken && ready) open()
-  }, [linkToken, open, ready])
+  }
 
   const initialSync = usePlaidSync(onError)
 
@@ -143,6 +138,7 @@ export function PlaidConnectionWorkflow({ compact = false, onError }: PlaidConne
 
   return (
     <>
+      {linkToken && <PlaidLinkLauncher token={linkToken} {...plaidLinkHandlers} />}
       <Button
         size="lg"
         variant={compact ? 'default' : 'primary'}

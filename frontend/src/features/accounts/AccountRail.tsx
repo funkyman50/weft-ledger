@@ -88,8 +88,8 @@ export function AccountRail({
   return (
     <aside className="bp-sidebar">
       <div className="bp-brand">
-        <img className="bp-brand-mark" src="/icon.png" alt="" width={36} height={36} />
-        <HelpTooltip className="bp-brand-name" explanation={`Weft ${releaseName}${__WEFT_BUILD__ ? `, build ${__WEFT_BUILD__}` : ''}`}><strong>Weft</strong><span className="bp-brand-release">{releaseName}</span></HelpTooltip>
+        <img className="bp-brand-mark" src="/icon.png" alt="Weft" width={36} height={36} />
+        <HelpTooltip className="bp-brand-name" explanation={`${releaseName}${__WEFT_BUILD__ ? `, build ${__WEFT_BUILD__}` : ''}`}><strong>Weft</strong><span className="bp-brand-release">{releaseName}</span></HelpTooltip>
         <Button className="bp-system-settings-button" size="md" variant="quiet" iconOnly aria-label="System settings" onClick={(event) => onSystemSettings(event.currentTarget)}><Settings aria-hidden="true" /></Button>
       </div>
       <nav className="bp-account-list" aria-label="Accounts">

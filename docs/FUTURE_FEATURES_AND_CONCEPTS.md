@@ -109,7 +109,7 @@ The [native runtime](../README.md#install-and-run) already runs one backend with
 
 Start, Stop and Open controls can launch a same-machine browser. An optional native window must share that service, frontend and saved data. Multiple users, remote browsers and internet exposure need separate decisions. Never distribute a shared provider secret as a packaging shortcut.
 
-Stopped-app restore and password recovery do not take the backend's database lock; they rely on the operator stopping Weft first. Defer other path restructuring and launcher modes until an installer has a concrete need. Generated client types require observed drift to justify tooling. Public-release CI is a separate scope.
+Development installations are read-only toward Plaid so they can share an installed runtime's Items; new bank sign-in, repair and account-conversion flows therefore cannot be exercised there. A separate Sandbox development path would need its own data and settings decision. A restored installation creates a new Plaid Link user ID; Plaid documents update mode by Item access token and no matching requirement, so confirm the first real repair after such a restore. Stopped-app restore and password recovery do not take the backend's database lock; they rely on the operator stopping Weft first. Defer other path restructuring and launcher modes until an installer has a concrete need. Generated client types require observed drift to justify tooling. Public-release CI is a separate scope.
 
 ### LOC efficiency
 

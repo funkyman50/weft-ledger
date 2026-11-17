@@ -23,7 +23,7 @@ Run `npm ci` and `npm run build` in `frontend/` to regenerate these files from t
 
 Rolldown injects runtime helpers that Vite's package inventory omits. Its own license is copied from the installed package. The supplementary text is retained verbatim in `frontend/notices/rolldown-third-party.txt` from [Rolldown 1.1.4](https://raw.githubusercontent.com/rolldown/rolldown/v1.1.4/THIRD-PARTY-LICENSE). The build requires that reviewed Rolldown version. After an upgrade, review and replace the supplementary text from the matching upstream version, then update the version check in `frontend/vite.config.ts`.
 
-Plaid Link also loads from Plaid's CDN at runtime. It is not included in this bundle. Provider service terms and access requirements are separate from the SDK licenses.
+Plaid Link loads from Plaid's CDN only when a bank sign-in or repair starts. It is not included in this bundle. Provider service terms and access requirements are separate from the SDK licenses.
 
 ## Installed runtime
 

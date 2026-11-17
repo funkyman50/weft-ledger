@@ -6,7 +6,7 @@ This file is part of the [product contract](../PRODUCT_CONTRACT.md). It owns the
 
 ### Account rail and selection
 
-- The account list starts with All Accounts below the brand header, without a separate visible Accounts label. The brand header shows the Weft name and single-color W wallet mark. At narrow widths only the mark is visible, with the Weft accessible name. The navigation retains its accessible Accounts name. A solid 3px muted-blue divider separates the brand header from account navigation.
+- The account list starts with All Accounts below the brand header, without a separate visible Accounts label. The brand header shows the Weft name, a version chip (`v<version>`, followed by `dev` in development builds) and Wally, the single-color Weft moth mark. At narrow widths only the mark is visible, with the Weft accessible name. The navigation retains its accessible Accounts name. A solid 3px muted-blue divider separates the brand header from account navigation.
 - The left rail shows open accounts, their type, working balance, the selected imported icon or automatic institution/account initial, and review count when relevant.
 - Each account row shows its name on the first line. The second line shows its type, its review count as a small amber badge, and its right-aligned working balance.
 - Account-type icons, automatic initials, imported icons and the All Accounts icon share one white rounded-square tile with a soft outline and no hard border, so every row has the same icon footprint. They follow the browser-local [Show account icons preference](register.md#presentation-preferences-and-backup-eligibility). Hiding icons does not change row height.

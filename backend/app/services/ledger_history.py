@@ -353,10 +353,11 @@ class LedgerHistoryManager:
         self.complete(page, request_id, sequence, receipt.label)
 
     def clear(self, page, request_id, sequence, message):
+        if page.receipts:
+            page.notice = message
         page.receipts = []
         page.cursor = 0
         page.revision += 1
-        page.notice = message
         self.complete(page, request_id, sequence, message)
 
 

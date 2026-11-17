@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Lock, Pencil, X } from 'lucide-react'
-import { usePlaidLink } from 'react-plaid-link'
+import { PlaidLinkLauncher, type PlaidLinkHandlers } from '../plaid/PlaidLinkLauncher'
 import { ApiError, apiClient, apiErrorMessage } from '../../api/client'
 import { Button } from '../../components/Button'
 import { DialogHeader } from '../../components/DialogHeader'
@@ -235,8 +235,7 @@ export function AccountDialog({ account, accounts, plaidStatus, onClose, onCreat
     }
   }
 
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
+  const plaidLinkHandlers: PlaidLinkHandlers = {
     onSuccess: () => {
       recordDiagnostic('plaid.link_repair_succeeded', 'info')
       repairLinkSucceeded.current = true
@@ -251,11 +250,7 @@ export function AccountDialog({ account, accounts, plaidStatus, onClose, onCreat
       setRepairStage('idle')
       if (plaidError) setError(plaidError.display_message || plaidError.error_message || 'Plaid Link closed with an error.')
     },
-  })
-
-  useEffect(() => {
-    if (linkToken && ready) open()
-  }, [linkToken, open, ready])
+  }
 
   const recoverLocalOnly = async () => {
     if (!account || pending || fieldsChanged) return
@@ -409,6 +404,7 @@ export function AccountDialog({ account, accounts, plaidStatus, onClose, onCreat
 
   return (
     <>
+    {linkToken && <PlaidLinkLauncher token={linkToken} {...plaidLinkHandlers} />}
     <Modal inactive={logoPickerOpen} size="md" role={confirmingDelete || confirmingClose ? 'alertdialog' : 'dialog'} labelledBy={confirmingDelete ? 'account-delete-title' : confirmingClose ? 'account-close-title' : 'account-dialog-title'} initialFocusRef={confirmingDelete ? deletionWarningRef : confirmingClose ? closeCancelRef : isCreate ? nameRef : renameRef} onRequestClose={closeSafely}>
       {confirmingClose || confirmingDelete ? <DialogHeader
         titleId={confirmingClose ? 'account-close-title' : 'account-dialog-title'}

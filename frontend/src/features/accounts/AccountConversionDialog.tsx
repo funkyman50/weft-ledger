@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { usePlaidLink } from 'react-plaid-link'
+import { PlaidLinkLauncher, type PlaidLinkHandlers } from '../plaid/PlaidLinkLauncher'
 import { Check, CircleAlert, Clock, Info, Link2, LoaderCircle, Plus } from 'lucide-react'
 import { ApiError, apiClient, apiErrorMessage } from '../../api/client'
 import { invalidateAccountAndTransactionQueries } from '../../api/hooks'
@@ -236,7 +236,7 @@ export function AccountConversionDialog({ account, accounts, outcomeUnknown, rel
   const refreshReview = async () => { await reviewQuery.refetch() }
   const start = useMutation({ mutationFn: () => apiClient.providerCommand<{ link_token?: string; configuration_identity?: string; attempt: Attempt | null }>(`/api/accounts/${account.id}/conversion/link-token`), onSuccess: (result) => result.attempt ? void attemptQuery.refetch() : result.link_token && (setConfigurationIdentity(result.configuration_identity ?? null), setLinkMode('new'), setLinkToken(result.link_token)), onError: (caught) => setError(apiErrorMessage(caught, 'Could not start the bank connection.')) })
   const updateAccess = useMutation({ mutationFn: (itemId: number) => apiClient.providerCommand<{ link_token: string }>(`/api/accounts/${account.id}/conversion/existing-items/${itemId}/update-link-token`), onSuccess: (result) => { setLinkMode('update'); setLinkToken(result.link_token); setError(null) }, onError: (caught) => { recoveringAccess.current = false; setError(apiErrorMessage(caught, 'Could not update access to this bank login.')) } })
-  const { open, ready } = usePlaidLink({ token: linkToken, onSuccess: (token, metadata) => {
+  const plaidLinkHandlers: PlaidLinkHandlers = { onSuccess: (token, metadata) => {
     recordDiagnostic('plaid.link_conversion_succeeded', 'info', { account_count: metadata.accounts.length })
     setLinkToken(null)
     if (linkMode === 'update') {
@@ -265,8 +265,7 @@ export function AccountConversionDialog({ account, accounts, outcomeUnknown, rel
     setInstitutionId(metadata.institution?.institution_id ?? null)
     setProviderAccounts(metadata.accounts)
     setProviderId(metadata.accounts[0]?.id ?? '')
-  }, onExit: (plaidError) => { recordPlaidLinkExit(plaidError); recoveringAccess.current = false; setLinkToken(null); setLinkMode(null); if (plaidError) setError(plaidError.display_message || plaidError.error_message || 'Plaid Link closed with an error.') } })
-  useEffect(() => { if (linkToken && ready) open() }, [linkToken, ready, open])
+  }, onExit: (plaidError) => { recordPlaidLinkExit(plaidError); recoveringAccess.current = false; setLinkToken(null); setLinkMode(null); if (plaidError) setError(plaidError.display_message || plaidError.error_message || 'Plaid Link closed with an error.') } }
   useEffect(() => { setFeedCursor(null); setHistoryCursor(null); setFeedId(null); setHistoryId(null); setAnchor(null) }, [bucket, feedText, historyText, feedDate, historyDate, feedAmount, historyAmount])
   const exchange = useMutation({ mutationFn: () => apiClient.providerCommand<Attempt>(`/api/accounts/${account.id}/conversion/exchange`, { public_token: publicToken, configuration_identity: configurationIdentity, provider_account_id: providerId, institution, institution_id: institutionId }), onSuccess: async () => { setFirstDownload('new'); setPublicToken(null); await attemptQuery.refetch() }, onError: (caught) => setError(apiErrorMessage(caught, 'Could not stage the connection.')) })
   const stageExisting = useMutation({ mutationFn: () => apiClient.providerCommand<Attempt>(`/api/accounts/${account.id}/conversion/existing-items/${existingItemId}/stage`, { provider_account_id: providerId }), onSuccess: async () => { setFirstDownload('existing'); setLostMappings([]); await attemptQuery.refetch() }, onError: (caught) => setError(apiErrorMessage(caught, 'Could not stage this bank account. Refresh the account list and try again.')) })
@@ -381,7 +380,7 @@ export function AccountConversionDialog({ account, accounts, outcomeUnknown, rel
   const downloadNote = 'Downloading history can take several minutes. It is safe to close this dialog.'
   const errorCallout = error && <div className="bp-callout bp-callout--error" role="alert">{error}</div>
 
-  return <Modal size={stage === 'review' ? 'workbench' : 'md'} labelledBy="conversion-title" loading={attemptQuery.isPending || stage === 'review' && !preview && !reviewQuery.isError} initialFocusRef={focusRefs[stage]} onRequestClose={() => !pending && onClose()}>
+  return <>{linkToken && <PlaidLinkLauncher token={linkToken} {...plaidLinkHandlers} />}<Modal size={stage === 'review' ? 'workbench' : 'md'} labelledBy="conversion-title" loading={attemptQuery.isPending || stage === 'review' && !preview && !reviewQuery.isError} initialFocusRef={focusRefs[stage]} onRequestClose={() => !pending && onClose()}>
     <DialogHeader titleId="conversion-title" title={`Connect ${account.name}`} subtitle={subtitle} closeDisabled={pending} onClose={onClose} />
     {stage === 'other' && attempt && <>
       <div className="bp-dialog-body">
@@ -509,5 +508,5 @@ export function AccountConversionDialog({ account, accounts, outcomeUnknown, rel
         <Button size="lg" variant="primary" busy={commit.isPending} disabled={!preview.can_commit || pending || reviewSynchronizing || accessRecoveryRequired || accessRecoveryNeedsRefresh || ownAttempt.shared_item_id !== null && !acknowledgeLateHistory || preview.pending_candidate_count > 0 && !acknowledgePendingOverlap} onClick={() => commit.mutate()}>{commit.isPending ? 'Connecting…' : 'Connect account'}</Button>
       </div>
     </>}
-  </Modal>
+  </Modal></>
 }

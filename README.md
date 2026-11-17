@@ -14,7 +14,7 @@ Third-party software, fonts and artwork retain their own terms. [Third-party not
 
 ### Project artwork
 
-The [W wallet mark](frontend/artwork/wallet-mark.svg) was drawn as a vector from a concept supplied by Daniel Piechowski. It uses app blue `#245edb`. The app uses square PNG exports at [512 px](frontend/public/icon.png), [32 px](frontend/public/favicon.png) and [180 px](frontend/public/apple-touch-icon.png).
+[Wally, the Weft moth](frontend/artwork/wally.svg), was drawn as a vector from a concept supplied by Daniel Piechowski. It uses app blue `#245edb`. The app uses square PNG exports at [512 px](frontend/public/icon.png), [32 px](frontend/public/favicon.png) and [180 px](frontend/public/apple-touch-icon.png).
 
 These images were created for the project with OpenAI image tools under Daniel Piechowski's direction:
 
