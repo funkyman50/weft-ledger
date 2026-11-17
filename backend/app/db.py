@@ -1,3 +1,4 @@
+import fcntl
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -14,6 +15,18 @@ SQL_ID_BATCH_SIZE = 300
 
 Base = declarative_base()
 CATEGORY_SEED_SQL = Path(__file__).with_name("category_seeds.sql").read_text()
+
+
+def hold_database_lock(db_path: str) -> int:
+    path = Path(db_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(path.with_name(f"{path.name}.lock"), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(descriptor)
+        raise RuntimeError(f"Another Weft backend is using {path}. Stop it before starting this one.") from None
+    return descriptor
 
 
 def rotate_database_generation(path: Path) -> str:

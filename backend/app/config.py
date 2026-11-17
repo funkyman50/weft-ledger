@@ -9,6 +9,7 @@ class Settings:
     db_path: str
     log_dir: str | None = None
     openai_callback_port: int = 8000
+    plaid_read_only: bool = False
 
 
 def validate_installation_secret(secret: str) -> None:
@@ -24,4 +25,5 @@ def get_settings() -> Settings:
         db_path=os.environ["WEFT_DB_PATH"],
         log_dir=os.environ.get("WEFT_LOG_DIR") or None,
         openai_callback_port=int(os.environ.get("WEFT_OPENAI_CALLBACK_PORT", "8000")),
+        plaid_read_only=os.environ.get("WEFT_PLAID_READ_ONLY") == "1",
     )

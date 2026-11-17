@@ -10,7 +10,7 @@ Existing bank refreshes retain small [reported balance observations](docs/contra
 
 Original Weft code and the project artwork listed below are licensed under [PolyForm Noncommercial 1.0.0](LICENSE), to the extent rights are held, with [the required copyright notice](NOTICE) for Daniel Piechowski. This is a source-available project. The license permits personal and other noncommercial use, modification and sharing; commercial use needs separate permission unless the license expressly permits it, including its listed organization exceptions.
 
-Third-party software, fonts and artwork retain their own terms. [Third-party notices](THIRD_PARTY_NOTICES.md) maps the notices generated with each frontend build and retained in source installations and locally built containers. The notice guide describes additional checks before distributing prebuilt images. The project license grants no trademark rights. No additional internal-business license or custom exception is included.
+Third-party software, fonts and artwork retain their own terms. [Third-party notices](THIRD_PARTY_NOTICES.md) maps the notices generated with each frontend build and retained in source installations. The notice guide describes additional checks before distributing prebuilt binaries. The project license grants no trademark rights. No additional internal-business license or custom exception is included.
 
 ### Project artwork
 
@@ -75,7 +75,7 @@ The connection uses locally hosted Sign in with ChatGPT. The user completes auth
 
 Encrypted installation state lives beside the configured database as `<database-stem>.openai.enc`. It includes registration identity, renewable credentials, AI enablement and the selected model. It uses the installation's `WEFT_SECRET`, owner-only file permissions and atomic replacement. Database backup/restore does not include or replace it. Keep the original secret; do not copy the connection state to another host or commit it.
 
-OAuth returns to `http://127.0.0.1:<port>/auth/callback` on the existing backend. The local launcher supplies its backend port; Compose supplies its published host port `9099`. Custom runtimes must set `WEFT_OPENAI_CALLBACK_PORT` to the port reachable by the local browser. A remote browser or unexposed container port cannot deliver this loopback callback. The result page directs the user back to Weft; settings then reads connection status.
+OAuth returns to `http://127.0.0.1:<port>/auth/callback` on the existing backend. The launcher supplies the backend port in both modes. Custom launches must set `WEFT_OPENAI_CALLBACK_PORT` to the backend port reachable by the local browser. A remote browser cannot deliver this loopback callback. The result page directs the user back to Weft; settings then reads connection status.
 
 Disconnect clears local tokens and retains registration identity for reconnect. If remote revocation could not be confirmed, settings directs the user to disconnect the app's registration in ChatGPT. An uncertain settings/connection response triggers a status read before another dependent action. Provider errors do not log out the Weft session.
 
@@ -91,23 +91,23 @@ Plaid API credentials live beside the database in `<database filename>.plaid.enc
 
 The runtime does not read `PLAID_CLIENT_ID`, `PLAID_SECRET` or `PLAID_ENV`. Use the saved profile in System settings for setup and credential changes. Local ordinary-browser use remains the supported scope; this feature adds no public-internet deployment guarantee.
 
-## Local development
+## Install and run
 
-On macOS, install Python 3, `uv`, Node.js and npm. The backend uses Python 3.12 or later through `uv`. Install frontend dependencies from the checkout:
+Weft runs natively on macOS and Linux as one local backend process that serves the app and its API. Windows is not supported yet. Install these first:
+
+- macOS: Python 3, `uv`, Node.js 22 or later and npm, for example with Homebrew.
+- Linux: Python 3, `uv`, Node.js 22 or later, npm and `lsof`, and a systemd user session (a normal desktop or console login).
+
+The launcher runs on the system Python 3. The backend needs Python 3.12 or later, which `uv` downloads when the system lacks it.
+
+From a checkout, install the interface dependencies once, then open the menu:
 
 ```bash
 (cd frontend && npm ci)
-```
-
-From the repository root, open the development menu:
-
-```bash
 ./weft
 ```
 
-Choose **Start**, then **Open browser** to open Weft in Google Chrome. The menu also offers Stop, Restart, Status and Logs. Both servers bind to `127.0.0.1` and retain hot reload. Exit menu or closing the terminal leaves them running under macOS `launchd`; use Stop to end them. The service does not start automatically at login and ends at logout or shutdown.
-
-Each action is also available directly:
+Choose **Start**, then **Open browser**. Start installs the Python packages, builds the interface and starts Weft at [localhost:9099](http://localhost:9099). Run `npm ci` again after updating the checkout. Each action is also available directly:
 
 ```bash
 ./weft start
@@ -118,35 +118,28 @@ Each action is also available directly:
 ./weft stop
 ```
 
-Start waits for both servers to respond. Repeated Start reuses the managed instance. Defaults are frontend `9099` and backend `8000`. Occupied ports and an existing unmanaged backend in this checkout block Start; the launcher never kills their processes or silently starts another backend on fallback ports. If an older terminal launch is running, stop it in that terminal before using this menu. To choose other ports explicitly, set `PORT` and `WEFT_BACKEND_PORT` when starting:
+Weft runs as a per-user background service: `launchd` on macOS, a transient `systemd --user` unit on Linux. Closing the menu or terminal leaves it running; use Stop to end it. It does not start at login. On macOS it ends at logout or shutdown; on Linux it ends when the user's systemd manager stops, normally after the last session ends, or later when lingering is enabled. Over SSH without a user manager, Start explains the requirement instead of starting. To use another port, set `PORT` when starting, for example `PORT=9100 ./weft start`. Restart keeps the running port.
 
-```bash
-PORT=9100 WEFT_BACKEND_PORT=8001 ./weft start
-```
+Weft keeps its data in a per-user folder outside the checkout:
 
-Restart retains the running service's ports and launcher environment while rereading `.env`. Stop and Start apply new environment overrides. A startup failure leaves its attempt available for Logs, Stop or Restart. Logs shows the last 100 output lines. Private launcher state and combined server output live in `data/launcher/`; each new start retains one previous log. The active output log has no size cap. Existing bounded application diagnostics remain separate.
+| System | Data folder |
+| --- | --- |
+| macOS | `~/Library/Application Support/Weft` |
+| Linux | `$XDG_DATA_HOME/weft`, normally `~/.local/share/weft` |
 
-Development data is stored in `data/dev.db` and is protected saved data. Set `WEFT_DEV_SECRET` explicitly before starting, following [local security and credentials](docs/OPERATIONS.md#local-security-and-credentials). Preserve the installation's existing key when it holds encrypted connections.
+The folder holds the database `weft.db`, its installation key `installation.key`, credential and password files, diagnostics and launcher logs. The first Start of a new installation creates the key and asks you to back it up. Keep that backup private and separate from financial backups: the key decrypts saved bank and AI connections, and Weft cannot recover it. If the database exists without its key, Start refuses and changes nothing. See [local security and credentials](docs/OPERATIONS.md#local-security-and-credentials).
 
-If `.env` does not exist, copy `.env.example` to it. For bank connections, use **System settings → Plaid**. `PLAID_*` environment variables are not read by the runtime. The development launcher overrides `WEFT_SECRET` and `WEFT_DB_PATH` with its development values. An eligible account's settings can repair an existing Item; that repair affects the accounts sharing the Item. See [bank mapping and repair](docs/contract/accounts.md#mapping-and-repairing-bank-connections) for its admission rules.
+Only one Weft backend can use a database at a time; a second one refuses to start. Occupied ports block Start; the launcher never stops another program's process. Logs shows the last 100 lines of launcher output, and each Start keeps one previous log.
 
-Use the same `./weft` controls from every terminal and open the managed URL. Do not launch `scripts/dev-local.sh` directly alongside it.
+## Development
 
-Launch behavior is defined in [weft](weft) and [dev-local.sh](scripts/dev-local.sh). This is a development launcher; dependencies and this checkout are still required. Docker remains the alternative runtime below.
+`./weft dev` controls the hot-reload development servers with the same actions, for example `./weft dev start`. They bind to `127.0.0.1`: the Vite frontend on `PORT` (default `9199`) and the backend on `WEFT_BACKEND_PORT` (default `8000`), so development and the installed runtime on `9099` can run side by side. Choose other ports with, for example, `PORT=9100 WEFT_BACKEND_PORT=8001 ./weft dev start`.
 
-## Docker
+Development data is stored in `data/dev.db` in the checkout and is protected saved data. If `.env` does not exist, copy `.env.example` to it and set `WEFT_DEV_SECRET` there (on Linux the launcher does not pass a shell-exported value to the service) following [local security and credentials](docs/OPERATIONS.md#local-security-and-credentials). Preserve an existing key when it holds encrypted connections. The development launcher supplies `WEFT_SECRET` and `WEFT_DB_PATH` from these development values. Restart keeps the running ports and rereads `.env`; Stop and Start apply new environment overrides. Launcher state and output live in `data/launcher/`.
 
-For a new installation, copy the environment template from the repository root and set `WEFT_SECRET` using the [credential requirements](docs/OPERATIONS.md#local-security-and-credentials). Use Docker Engine 28 or later for loopback port isolation. If `.env` already exists, edit it instead of replacing it. Set up optional bank connections in **System settings → Plaid** after signing in. Preserve the secret for the installation: it decrypts this installation’s stored connection credentials. An encrypted recovery package can restore them under a destination secret without the original secret.
+An occupied port or an unmanaged development backend in this checkout blocks Start. Use the same `./weft dev` controls from every terminal; do not launch `scripts/dev-local.sh` directly alongside them. Launch behavior is defined in [weft](weft), [dev-local.sh](scripts/dev-local.sh) and [run-local.sh](scripts/run-local.sh).
 
-```bash
-cp .env.example .env
-# Edit .env before starting the service.
-docker compose up -d --build
-```
-
-Open [localhost:9099](http://localhost:9099). The Compose configuration maps `127.0.0.1:9099` to backend port `8000` and mounts `./data` at `/data`. Compose defaults to `data/weft.db`, a separate database from local development’s `data/dev.db`; starting it does not import the development installation. See [docker-compose.yml](docker-compose.yml) and the [Dockerfile](backend/Dockerfile).
-
-The image contains the built frontend and serves it with the API through one backend process. Node, Vite and version-pinned uv are used during the image build and are absent from the runtime image. Frontend builds include `dist/licenses/`; the image retains this at `/app/app/static/licenses/`, alongside installed Python, CPython and Debian notices. See [third-party notices](THIRD_PARTY_NOTICES.md) for locations and the additional checks required before distributing prebuilt images.
+For bank connections, use **System settings → Plaid**; `PLAID_*` environment variables are not read. The development servers are read-only toward Plaid, so a development copy can share an installed runtime's bank connections without changing them. They sync only when you press **Sync Plaid** (never on the six-hour schedule) and read accounts; starting a new bank sign-in, repairing a sign-in and removing a connection at Plaid are refused. Local changes that need no Plaid change still work: mapping an account to an existing connection, and disconnecting one account while another account keeps that connection. An eligible account's settings in the installed runtime can repair an existing Item; that repair affects the accounts sharing the Item. See [bank mapping and repair](docs/contract/accounts.md#mapping-and-repairing-bank-connections) for its admission rules.
 
 ## Verification
 
@@ -167,4 +160,4 @@ The regression tests for category names, reconciliation, Plaid connection and sy
 (cd backend && uv run python -m unittest discover -s tests -p 'test_openai_connection_check.py')
 ```
 
-Start and open the app with `./weft` and inspect the affected user flow deliberately. New automated tests require a reproduced defect and a durable observable boundary. Documentation-only changes require fact, link, anchor and whitespace checks.
+Start and open the app with `./weft dev` and inspect the affected user flow deliberately. New automated tests require a reproduced defect and a durable observable boundary. Documentation-only changes require fact, link, anchor and whitespace checks.

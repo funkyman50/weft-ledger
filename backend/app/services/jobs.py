@@ -30,7 +30,7 @@ class PlaidSyncJobs:
 
     def start(self) -> None:
         self.scheduler.add_job(
-            self.run,
+            self._tick,
             "interval",
             hours=6,
             next_run_time=datetime.now(),
@@ -97,7 +97,11 @@ class PlaidSyncJobs:
             statement = statement.where(PlaidAccountLink.plaid_item_id.in_(item_ids))
         return list(db.scalars(statement.distinct()).all())
 
-    def run(self, item_ids: set[int] | None = None, *, db=None, client=None) -> dict:
+    def _tick(self) -> None:
+        # Development shares Production's Items, so it syncs banks only when the user asks.
+        self.run(sync_banks=not self.settings.plaid_read_only)
+
+    def run(self, item_ids: set[int] | None = None, *, db=None, client=None, sync_banks: bool = True) -> dict:
         with operation("job.sync", job_run_id=str(uuid4())) as outcome:
             run_id = object()
             session = db if db is not None else self.session_factory()
@@ -118,7 +122,7 @@ class PlaidSyncJobs:
                             }
                     entered, entry_issues = self._enter_due()
                     try:
-                        if not backup_state.bank_sync_paused(self.settings.db_path):
+                        if sync_banks and not backup_state.bank_sync_paused(self.settings.db_path):
                             run_sync(
                                 session,
                                 settings=self.settings,

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import LocalBrowserAdmission, PasswordStore, require_session, set_session_cookie
 from app.config import get_settings
-from app.db import database_generation, init_db, make_session_factory
+from app.db import database_generation, hold_database_lock, init_db, make_session_factory
 from app.schema_admission import SCHEMA_REVISION
 from app.diagnostics import DiagnosticMiddleware, configure_diagnostics, diagnostics, operation
 from app.errors import AppError, register_error_handlers
@@ -41,6 +41,7 @@ class LoginRequest(BaseModel):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    database_lock = hold_database_lock(settings.db_path)
     password_store = PasswordStore(settings.db_path)
     password_store.initialize()
     configure_diagnostics(settings.db_path, settings.log_dir)
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(lifespan=lifespan)
     app.state.settings = settings
+    app.state.database_lock = database_lock
     app.state.password_store = password_store
     app.state.engine = engine
     app.state.session_local = session_local

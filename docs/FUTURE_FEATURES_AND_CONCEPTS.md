@@ -105,11 +105,11 @@ Public distribution still needs an exact reviewed source snapshot, public suppor
 
 [Plaid setup](../README.md#plaid-setup) supports one bring-your-own developer account per installation. Fresh-user signup and bank-link acceptance remains unverified. Managed SaaS needs separate provider, authentication, custody and migration decisions.
 
-A proposed native installer would keep the current stack and package one backend with the built frontend. Choose supported platforms, first-run setup, stable secret/data locations, updates, uninstall and recovery under the [data-protection contract](contract/system.md#data-protection-and-schema-upgrades). Historical-format support is outside scope until separately approved.
+The [native runtime](../README.md#install-and-run) already runs one backend with the built frontend on macOS and Linux, with a first-run key and per-user data folder. A downloadable installer would package that runtime. It still needs packaging, signing, updates, uninstall and recovery under the [data-protection contract](contract/system.md#data-protection-and-schema-upgrades); updates require an approved schema-upgrade path. Windows needs equivalents for the regex evaluator's POSIX signals, owner-only file permissions and `fcntl` locks. Historical-format support is outside scope until separately approved.
 
 Start, Stop and Open controls can launch a same-machine browser. An optional native window must share that service, frontend and saved data. Multiple users, remote browsers and internet exposure need separate decisions. Never distribute a shared provider secret as a packaging shortcut.
 
-Defer path restructuring and new launcher modes until an installer has a concrete need. Generated client types require observed drift to justify tooling. Public-release CI is a separate scope.
+Stopped-app restore and password recovery do not take the backend's database lock; they rely on the operator stopping Weft first. Defer other path restructuring and launcher modes until an installer has a concrete need. Generated client types require observed drift to justify tooling. Public-release CI is a separate scope.
 
 ### LOC efficiency
 

@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 mkdir -p data
 
 BACKEND_PORT="${WEFT_BACKEND_PORT:-8000}"
-FRONTEND_PORT="${PORT:-9099}"
+FRONTEND_PORT="${PORT:-9199}"
 
 if [[ -f .env ]]; then
   set -a
@@ -20,6 +20,7 @@ fi
 export WEFT_BACKEND_PORT="$BACKEND_PORT"
 export PORT="$FRONTEND_PORT"
 export WEFT_OPENAI_CALLBACK_PORT="$BACKEND_PORT"
+export WEFT_PLAID_READ_ONLY=1
 WEFT_SECRET="$WEFT_DEV_SECRET" \
 WEFT_DB_PATH="$ROOT/data/dev.db" \
 uv run --project backend uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port "$BACKEND_PORT" --no-proxy-headers --no-access-log --reload --reload-dir backend &

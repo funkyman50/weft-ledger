@@ -25,22 +25,20 @@ Rolldown injects runtime helpers that Vite's package inventory omits. Its own li
 
 Plaid Link also loads from Plaid's CDN at runtime. It is not included in this bundle. Provider service terms and access requirements are separate from the SDK licenses.
 
-## Locally built container
+## Installed runtime
 
-The Docker recipe retains the following notice locations:
+`./weft start` builds the frontend into `backend/app/static/` and runs the backend from the checkout. Notices stay in these locations:
 
 | Location | Contents |
 | --- | --- |
-| `/app/LICENSE`, `/app/NOTICE`, `/app/THIRD_PARTY_NOTICES.md` | Original Weft terms and this index. |
-| `/app/app/static/licenses/` | The frontend notices listed above. |
-| `/app/.venv/lib/python3.12/site-packages/` | Python package licenses, vendor notices and available SBOMs, usually in each package's `.dist-info/licenses/` directory. Some packages place them elsewhere or omit them. Preserve these files, including Pillow's complete combined codec notices and certifi's source and MPL license. |
-| `/usr/local/lib/python3.12/LICENSE.txt` | CPython license and acknowledgments supplied by the Python base image. |
-| `/usr/share/doc/*/copyright` | Debian package copyright and license information supplied by the base image. |
+| `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md` | Original Weft terms and this index, at the checkout root. |
+| `backend/app/static/licenses/` | The frontend notices listed above. |
+| `backend/.venv/lib/python3.*/site-packages/` | Python package licenses, vendor notices and available SBOMs, usually in each package's `.dist-info/licenses/` directory. Some packages place them elsewhere or omit them. Preserve these files, including Pillow's complete combined codec notices and certifi's source and MPL license. |
 
-Node, Vite and uv are build tools and are not retained in the final runtime image. The container keeps installed notices in place rather than replacing them with package metadata or a second generated list.
+Python itself comes from the operating system or from `uv`'s managed Python builds, which carry their own license files.
 
-## Before distributing prebuilt images or other binaries
+## Before distributing prebuilt binaries
 
-This index documents notice packaging. It does not certify a complete native-library inventory or source-delivery compliance for a prebuilt image. Before publishing one, inspect the exact artifact and its platform-specific dependencies. Use upstream SBOMs and license files to assemble any missing embedded Rust, OpenSSL, libuv and other native notices. Resolve packages with missing license text, including nulltype's Apache-2.0 declaration. Check applicable source-availability obligations for covered libraries and operating-system components. Preserve upstream rights and document where recipients obtain the corresponding source.
+This index documents notice packaging. It does not certify a complete native-library inventory or source-delivery compliance for a prebuilt binary. Before publishing one, inspect the exact artifact and its platform-specific dependencies. Use upstream SBOMs and license files to assemble any missing embedded Rust, OpenSSL, libuv and other native notices. Resolve packages with missing license text, including nulltype's Apache-2.0 declaration. Check applicable source-availability obligations for covered libraries and operating-system components. Preserve upstream rights and document where recipients obtain the corresponding source.
 
-Publishing a source checkout and Docker recipe does not distribute the resulting operating-system image. Artwork, repository history, provider agreements and contribution permissions still require their own release checks.
+Publishing a source checkout does not distribute the dependencies a user installs from it. Artwork, repository history, provider agreements and contribution permissions still require their own release checks.

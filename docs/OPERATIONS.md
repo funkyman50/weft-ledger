@@ -4,7 +4,7 @@ This guide covers the runtime model, credentials, diagnostics, backup and restor
 
 ## Runtime model
 
-Run one backend process. Page-session Undo/Redo, write admission, scheduled jobs and diagnostic memory are process-local. Multiple backend workers are not supported. Ordinary restarts preserve saved data and local-save confirmations but end temporary Undo history. The register renews its session in place and keeps drafts and comparison choices. A rejected action needs a second deliberate click; the app never replays it automatically.
+Run one backend process. Page-session Undo/Redo, write admission, scheduled jobs and diagnostic memory are process-local. Multiple backend workers are not supported. Each backend holds an exclusive lock on `<database>.lock` for its lifetime, so a second backend on the same database refuses to start. Ordinary restarts preserve saved data and local-save confirmations but end temporary Undo history. The register renews its session in place and keeps drafts and comparison choices. A rejected action needs a second deliberate click; the app never replays it automatically.
 
 Local saves record a small confirmation in the same database transaction. The tab retains only the request identity in session storage so Refresh can inspect an uncertain save after restart or page reload. Recovery requires fresh authoritative reads. If evidence is still missing, the owner can choose **I checked the result—continue**; the result remains unknown and the draft remains available. Failed reads keep saving blocked. Bank operations use their own status checks. Database replacement requires reload. If browser storage is unavailable, the app warns that recovery information cannot survive reload. Confirmations are bounded by age and count in [commands.py](../backend/app/services/commands.py); they do not extend Undo history or contain financial snapshots.
 
@@ -26,39 +26,35 @@ Without a password, other people, accounts and programs on this computer can ope
 
 The password file is `<database-stem>.auth.json`, beside the database. It stores a salted scrypt hash and random session revision with owner-only permissions and atomic replacement. Settings is the sole runtime password source; `WEFT_PASSWORD` and `WEFT_DEV_PASSWORD` are not read. Authentication reads the file afresh. A missing or unreadable file for an existing database blocks access; startup never silently removes its password. Financial backups exclude this file, and restore keeps destination password settings. A new-machine recovery starts password-free. If a password save has an uncertain result, reload and sign in with the saved password, then inspect Security before trying again.
 
-The installation encryption key is still mandatory. Generate it once:
+The installation encryption key is mandatory. It must be 64 lowercase hexadecimal characters. Startup and offline financial restore refuse invalid keys before touching saved data. Replacing an existing key without re-encrypting all protected stores makes bank tokens, Plaid settings and OpenAI state unreadable. Password changes never rotate this key. The backend never generates or replaces a key.
+
+The installed runtime keeps its key in `installation.key` in the [data folder](../README.md#install-and-run), with owner-only permissions. When neither the key file nor the database exists, Start generates the key from the system random source, writes it durably before first use and prints its path. Back it up privately, separately from financial backups. Start never rewrites an existing key. If the database exists without the key file, Start refuses; restore the key file from its backup.
+
+Development reads `WEFT_DEV_SECRET` from `.env` in the checkout. Generate it once:
 
 ```bash
 python3 -c 'import secrets; print(secrets.token_hex(32))'
 ```
 
-The key must be 64 lowercase hexadecimal characters. Format validation does not prove randomness; use the generator. Save it privately and retain it with the installation. Startup and offline financial restore refuse invalid keys before touching saved data. Replacing an existing key without re-encrypting all protected stores makes bank tokens, Plaid settings and OpenAI state unreadable. Password changes never rotate this key.
-
-Copy `.env.example` only for a new configuration. Edit existing `.env` files in place and use `chmod 600 .env`. Never commit it or paste its contents into reports. Development requires `WEFT_DEV_SECRET`; Docker requires `WEFT_SECRET`. There is no fallback key.
+Format validation does not prove randomness; use the generator. Copy `.env.example` only for a new development configuration. Edit existing `.env` files in place and use `chmod 600 .env`. Never commit key files or `.env`, or paste their contents into reports. There is no fallback key.
 
 ### Private installation files
 
-Keep databases, credentials, backups, recovery keys, diagnostic exports and browser sign-in state in `data/` or outside the source checkout. Repository ignore rules cover common installation filenames and downloaded exports, including custom database paths with `.db` or `.sqlite` names. Databases with other filenames must stay outside the checkout or receive an explicit ignore rule. They do not remove files already tracked by Git or clear earlier history. Review an explicit source-file list before sharing a checkout.
-
-Docker admits only the source, assets, build configuration and notices needed by its build. Local environment files, private reports, dependencies and stale backend static output stay outside that context. New build input formats must be added deliberately to the allowlist. Docker reads working-copy files, including untracked files with an admitted extension. Keep scratch source, SQL dumps and private screenshots outside build-input directories, and build releases from an explicit reviewed source list.
+Keep databases, credentials, backups, recovery keys, diagnostic exports and browser sign-in state in the runtime data folder, in `data/`, or elsewhere outside the source checkout. Repository ignore rules cover common installation filenames and downloaded exports, including custom database paths with `.db` or `.sqlite` names. Databases with other filenames must stay outside the checkout or receive an explicit ignore rule. They do not remove files already tracked by Git or clear earlier history. Review an explicit source-file list before sharing a checkout.
 
 ### Local password recovery
 
 Stop Weft before using the local reset command. It needs the existing database's absolute path, not its encryption key. It prompts privately for a new password and confirmation. A blank password is refused; add `--remove` only to deliberately remove login protection. The command preserves any existing password file in an owner-only `*.auth.json.before-reset-*` copy, rotates the session revision, and changes no financial data or provider credentials.
 
+Run it from the repository root. Set `DATA` to the installed runtime's [data folder](../README.md#install-and-run): `"$HOME/Library/Application Support/Weft"` on macOS, `"${XDG_DATA_HOME:-$HOME/.local/share}/weft"` on Linux.
+
 ```bash
 ./weft stop
-uv run --project backend python -m app.auth --database "$PWD/data/dev.db"
+(cd backend && uv run python -m app.auth --database "$DATA/weft.db")
 ./weft start
 ```
 
-For Docker, stop the service and use its mounted database path. Compose supplies `WEFT_DB_PATH`; the interactive command uses the same data volume:
-
-```bash
-docker compose stop
-docker compose run --rm --entrypoint python weft -m app.auth
-docker compose up -d
-```
+For development, set `DATA="$PWD/data"` at the repository root, then use `./weft dev stop`, `--database "$DATA/dev.db"` and `./weft dev start`.
 
 Retain the private recovery copy until the new login succeeds. Password recovery does not recover a lost installation encryption key or a lost backup recovery key.
 
@@ -74,8 +70,8 @@ Server events are JSON lines in the terminal and rotating local files. Default p
 
 | Installation | Host log path |
 | --- | --- |
+| Installed runtime | `logs/weft.db/events.jsonl` in the data folder |
 | Local development | `data/logs/dev.db/events.jsonl` |
-| Docker | `data/logs/weft.db/events.jsonl` |
 
 `WEFT_LOG_DIR` overrides the directory. Different server processes must not write to the same directory. Files use private permissions. Retention has size and count limits, with no guaranteed number of days:
 
@@ -135,23 +131,21 @@ To verify a download, select it under Restore, enter its matching recovery key a
 
 ### Emergency restore
 
-Stop every Weft process before using the CLI. Export the destination `WEFT_SECRET` from its private configuration and set the destination database path. For an empty new installation, generate and retain a key using the [credential requirements](#local-security-and-credentials); the source installation’s original secret is unnecessary. The CLI prompts privately for the recovery key. Do not put that key in a command argument or environment variable. A missing database is an empty recovery destination; an existing destination must pass current-schema and custody admission. Incompatible or unreadable current data is refused. Preserve damaged data and its matching sidecars; recover into a new empty destination instead of bypassing admission.
+Stop every Weft process before using the CLI. Supply the destination installation's key as `WEFT_SECRET` and set the destination database path. For an empty new installed runtime, run `./weft start` once to create its key and empty database, then `./weft stop`; the source installation’s original secret is unnecessary. The CLI prompts privately for the recovery key. Do not put that key in a command argument or environment variable. A missing database is an empty recovery destination; an existing destination must pass current-schema and custody admission. Incompatible or unreadable current data is refused. Preserve damaged data and its matching sidecars; recover into a new empty destination instead of bypassing admission.
 
-For local development, run from `backend/`:
+For the installed runtime, run from `backend/` with `DATA` set to its data folder as in [local password recovery](#local-password-recovery):
+
+```bash
+WEFT_SECRET="$(cat "$DATA/installation.key")" WEFT_DB_PATH="$DATA/weft.db" uv run python -m app.restore_backup /absolute/path/to/backup.age
+```
+
+For development, run from `backend/` with the development secret from `.env` as `WEFT_SECRET`:
 
 ```bash
 WEFT_DB_PATH=/absolute/path/to/weft/data/dev.db uv run python -m app.restore_backup /absolute/path/to/backup.age
 ```
 
-Use the installation’s effective development secret when restoring its existing database. Preserve that secret for existing bank records and the separate OpenAI file. On a fresh installation, choose and retain a new secret.
-
-For Docker, place the package in the mounted `./data` directory and run from the repository root:
-
-```bash
-docker compose stop weft
-docker compose run --rm --no-deps --entrypoint python weft -m app.restore_backup /data/backup.age
-docker compose up -d
-```
+Preserve the installation key for existing bank records and the separate OpenAI file.
 
 Both restore paths use the same admission, token rewrapping, safety snapshot and SQLite replacement owners in [database_backup.py](../backend/app/services/database_backup.py). Existing data gets a private safety copy beside the destination. The bank pause is persisted before generation rotation and replacement. A failed replacement recovers from the retained safety copy; a failed fallback stops normal admission and requires operator recovery. SQLite sidecars block stopped-app replacement. Follow [SQLite recovery](#sqlite-recovery); never delete sidecars by guesswork.
 

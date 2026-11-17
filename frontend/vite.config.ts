@@ -1,12 +1,32 @@
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const backendPort = process.env.WEFT_BACKEND_PORT ?? '8000'
+const repository = new URL('..', import.meta.url)
+const channel = existsSync(new URL('.weft-dev', repository)) ? 'dev' : 'prod'
+
+function currentBuild() {
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repository, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  } catch {
+    return ''
+  }
+}
 
 export default defineConfig({
+  define: {
+    __WEFT_VERSION__: JSON.stringify(readFileSync(new URL('VERSION', repository), 'utf8').trim()),
+    __WEFT_CHANNEL__: JSON.stringify(channel),
+    __WEFT_BUILD__: JSON.stringify(currentBuild()),
+  },
   plugins: [
     react(),
+    {
+      name: 'release-channel-title',
+      transformIndexHtml: (html) => channel === 'dev' ? html.replace('<title>Weft</title>', '<title>Weft - Dev</title>') : html,
+    },
     {
       name: 'distribution-notices',
       apply: 'build',

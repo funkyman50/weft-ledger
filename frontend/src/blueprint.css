@@ -100,6 +100,19 @@ button:disabled { cursor: default; opacity: .58; }
   object-fit: contain;
 }
 
+.bp-brand-name > span { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.bp-brand-release {
+  padding: 1px 5px;
+  border: 1px solid var(--bp-line);
+  border-radius: var(--bp-radius-sm);
+  background: var(--bp-tint);
+  color: var(--bp-copy);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: -.06em;
+}
+
 .bp-system-settings-button { margin-left: auto; }
 
 .bp-account-list { overflow-y: auto; padding: 8px 8px 12px; }
@@ -1250,7 +1263,7 @@ button.bp-account-conversion-mark:focus-visible { outline: 2px solid var(--bp-bl
   .bp-account-group-total { grid-column: 1 / -1; justify-self: end; margin-left: 0; font-size: var(--bp-text-sm); }
   .bp-account-group-open { align-self: end; }
 
-  .bp-brand strong, .bp-account-details, .bp-account-balance, .bp-account-count { display: none; }
+  .bp-brand strong, .bp-brand-release, .bp-account-details, .bp-account-balance, .bp-account-count { display: none; }
   .bp-account { grid-template-columns: 28px minmax(0, 1fr); gap: 6px; padding: 8px 6px; }
   .bp-account.is-iconless { grid-template-columns: minmax(0, 1fr); }
   .bp-account.is-compact { grid-template-columns: 20px minmax(0, 1fr); padding: 4px 6px; }

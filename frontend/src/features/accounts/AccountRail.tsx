@@ -6,12 +6,19 @@ import { ApiError } from '../../api/client'
 import { useReorderAccounts } from '../../api/hooks'
 import { money } from '../../lib/money'
 import { Button } from '../../components/Button'
+import { HelpTooltip } from '../../components/HelpTooltip'
 import type { Account } from '../../api/types'
 import { PlaidConnectionWorkflow } from '../plaid/PlaidConnectionWorkflow'
 import { AccountIcon } from './AccountIcon'
 import { accountTypeLabel } from './accountTypes'
 import { accountBankDifference } from './accountBalances'
 import { useSortableAccountRail } from './useSortableAccountRail'
+
+declare const __WEFT_VERSION__: string
+declare const __WEFT_CHANNEL__: 'dev' | 'prod'
+declare const __WEFT_BUILD__: string
+
+const releaseName = `v${__WEFT_VERSION__}${__WEFT_CHANNEL__ === 'dev' ? ' dev' : ''}`
 
 export function AccountRail({
   showAccountIcons,
@@ -81,7 +88,8 @@ export function AccountRail({
   return (
     <aside className="bp-sidebar">
       <div className="bp-brand">
-        <img className="bp-brand-mark" src="/icon.png" alt="Weft" width={36} height={36} /><strong aria-hidden="true">Weft</strong>
+        <img className="bp-brand-mark" src="/icon.png" alt="" width={36} height={36} />
+        <HelpTooltip className="bp-brand-name" explanation={`Weft ${releaseName}${__WEFT_BUILD__ ? `, build ${__WEFT_BUILD__}` : ''}`}><strong>Weft</strong><span className="bp-brand-release">{releaseName}</span></HelpTooltip>
         <Button className="bp-system-settings-button" size="md" variant="quiet" iconOnly aria-label="System settings" onClick={(event) => onSystemSettings(event.currentTarget)}><Settings aria-hidden="true" /></Button>
       </div>
       <nav className="bp-account-list" aria-label="Accounts">

@@ -113,6 +113,10 @@ def plaid_error_kind(error: Exception) -> str | None:
     return None
 
 
+# Development installations share Production's Items; these calls could change or invalidate them.
+CONNECTION_CHANGING_METHODS = frozenset({"link_token_create", "item_public_token_exchange", "item_remove"})
+
+
 class PlaidClient:
     def __init__(self, settings: Settings, db):
         self.settings = settings
@@ -134,6 +138,8 @@ class PlaidClient:
 
     def _call(self, method, request, *, page=None, timeout=REQUEST_TIMEOUT_SECONDS):
         backup_state.require_bank_activity(self.settings.db_path)
+        if self.settings.plaid_read_only and method in CONNECTION_CHANGING_METHODS:
+            raise AppError("plaid_read_only", "Bank connections are managed in Production. This development installation only reads them.", 409)
         with operation(f"plaid.{method}", page=page) as outcome:
             try:
                 response = getattr(self.api, method)(request, _request_timeout=timeout)
@@ -266,7 +272,7 @@ class PlaidClient:
                 ItemRemoveRequest(access_token=access_token), timeout=4
             )
         except Exception as exc:
-            if isinstance(exc, AppError) and exc.code in {"bank_sync_paused", "backup_state_invalid"}:
+            if isinstance(exc, AppError) and exc.code in {"bank_sync_paused", "backup_state_invalid", "plaid_read_only"}:
                 raise
             if plaid_error_code(exc) == "ITEM_NOT_FOUND":
                 return
