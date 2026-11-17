@@ -8,9 +8,7 @@ Weft supports one user with the service and browser on the same computer. See [L
 
 ## Report a vulnerability privately
 
-Reporting setup is pending while the project is prepared for public release. The maintainer must enable and verify GitHub private vulnerability reporting before opening public issues.
-
-When available, open the repository's **Security → Advisories → Report a vulnerability** form. Do not put vulnerability details in public issues, discussions or pull requests. If the form is missing, open an issue requesting a private reporting channel without describing the vulnerability. Wait for a private channel before sending details.
+Use the repository's **Security → Advisories → Report a vulnerability** form ([direct link](https://github.com/funkyman50/weft-ledger/security/advisories/new)). Do not put vulnerability details in public issues, discussions or pull requests. If the form is missing, open an issue requesting a private reporting channel without describing the vulnerability. Wait for a private channel before sending details.
 
 Include the affected version or commit, installation method, operating system, expected impact and steps using synthetic data. A minimal synthetic proof of concept is helpful. Do not send real financial information, databases, backups, recovery keys, credentials or provider responses. Do not attach raw logs or unreviewed screenshots or diagnostics reports.
 
