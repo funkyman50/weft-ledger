@@ -28,6 +28,10 @@ Hypothesis only: at a boundary the calendar redraws and focus lands in the first
 
 Isolated Chrome entry checks emitted `ResizeObserver loop completed with undelivered notifications.` No visible rendering failure was observed. Identify the observer and reproduce a visible effect before changing layout behavior.
 
+### Narrow-window ledger overflow
+
+A 1280-pixel window showed horizontal scrolling in All Accounts with the Account, Transfer and separate Outflow / Inflow columns visible, without resized widths. The [register contract](contract/register.md#layout-filters-and-totals) allows overflow only when selected widths require it. Check whether the column minimums alone exceed that width before changing layout.
+
 ### Pending bank identity investigation
 
 Ambiguous pending/posted chronology needs provider-lifecycle evidence before classifying replacement, duplication or genuine activity. Follow [automatic pending continuity](contract/account-workflows.md#automatic-pending-continuity) and [incremental automatic transfer discovery](contract/schedules-loans-and-transfers.md#incremental-automatic-transfer-discovery). Two active pending records are never inferred as one.
@@ -101,7 +105,7 @@ Authentication, Plaid settings, backup state and OpenAI state use temporary file
 
 ### Installable distribution
 
-Public distribution still needs an exact reviewed source snapshot, public support/contribution guidance, artwork/source-mark provenance and installation/recovery acceptance. [Third-party notices](../THIRD_PARTY_NOTICES.md) describes artifact-specific obligations. License adoption, privacy cleanup or this queue does not authorize publication.
+Weft is published as source with tagged preview releases. Artwork/source-mark provenance and new-user installation and recovery acceptance remain open. [Third-party notices](../THIRD_PARTY_NOTICES.md) describes the obligations of any distributed build.
 
 [Plaid setup](../README.md#plaid-setup) supports one bring-your-own developer account per installation. Fresh-user signup and bank-link acceptance remains unverified. Managed SaaS needs separate provider, authentication, custody and migration decisions.
 
@@ -109,7 +113,7 @@ The [native runtime](../README.md#install-and-run) already runs one backend with
 
 Start, Stop and Open controls can launch a same-machine browser. An optional native window must share that service, frontend and saved data. Multiple users, remote browsers and internet exposure need separate decisions. Never distribute a shared provider secret as a packaging shortcut.
 
-Development installations are read-only toward Plaid so they can share an installed runtime's Items; new bank sign-in, repair and account-conversion flows therefore cannot be exercised there. A separate Sandbox development path would need its own data and settings decision. A restored installation creates a new Plaid Link user ID; Plaid documents update mode by Item access token and no matching requirement, so confirm the first real repair after such a restore. Stopped-app restore and password recovery do not take the backend's database lock; they rely on the operator stopping Weft first. Defer other path restructuring and launcher modes until an installer has a concrete need. Generated client types require observed drift to justify tooling. Public-release CI is a separate scope.
+Development installations are read-only toward Plaid so they can share an installed runtime's Items; new bank sign-in, repair and account-conversion flows therefore cannot be exercised there. A separate Sandbox development path would need its own data and settings decision. A restored installation creates a new Plaid Link user ID; Plaid documents update mode by Item access token and no matching requirement, so confirm the first real repair after such a restore. Stopped-app restore and password recovery do not take the backend's database lock; they rely on the operator stopping Weft first. Defer other path restructuring and launcher modes until an installer has a concrete need. Generated client types require observed drift to justify tooling.
 
 ### LOC efficiency
 

@@ -32,7 +32,7 @@ export default defineConfig({
       apply: 'build',
       generateBundle() {
         const rolldown = JSON.parse(readFileSync(new URL('./node_modules/rolldown/package.json', import.meta.url), 'utf8'))
-        if (rolldown.version !== '1.1.4') {
+        if (rolldown.version !== '1.2.19') {
           this.error('Update the retained Rolldown third-party runtime notices for this version before building.')
         }
         for (const [fileName, sourcePath] of [

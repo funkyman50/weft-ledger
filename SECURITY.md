@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Until the first tagged preview release, only the newest default-branch code is supported. Afterwards, only the latest preview release is supported. Older versions do not receive promised fixes or backports. Support is best effort, with no guaranteed response or remediation deadline.
+Only the latest tagged preview release is supported. Older versions do not receive promised fixes or backports. Support is best effort, with no guaranteed response or remediation deadline.
 
 Weft supports one user with the service and browser on the same computer. See [Local security and credentials](docs/OPERATIONS.md#local-security-and-credentials) for the supported setup. Version support does not promise database compatibility; check [Schema revisions](docs/OPERATIONS.md#schema-revisions) before updating.
 

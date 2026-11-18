@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import plistlib
+import re
 import secrets
 import shlex
 import shutil
@@ -396,6 +397,61 @@ def release_version(root):
     return (root / "VERSION").read_text().strip() if (root / "VERSION").is_file() else "unknown"
 
 
+BACKUP_PROGRAM = """
+import os, sys
+from pathlib import Path
+from app.config import get_settings
+from app.services import backup_state, database_backup
+settings = get_settings()
+state = backup_state.status(settings.db_path)
+if state["recipient"] is None:
+    sys.exit("No backup key is configured. Set one up in System settings > Backup & restore first.")
+content, key_id = database_backup.create_package(Path(settings.db_path), settings, state["key_id"])
+with os.fdopen(os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as handle:
+    handle.write(content)
+    handle.flush()
+    os.fsync(handle.fileno())
+print(key_id)
+"""
+
+
+def release_backup(checkout, secret, database, folder, prefix, version):
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        raise RuntimeError(f"{checkout / 'VERSION'} must hold X.Y.Z before a release backup.")
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    incomplete = folder / f".{prefix}-incomplete-{secrets.token_hex(8)}"
+    print(f"Backing up {database}…", flush=True)
+    try:
+        result = run(
+            ["uv", "run", "--project", str(checkout / "backend"), "--frozen", "python", "-c", BACKUP_PROGRAM, str(incomplete)],
+            cwd=checkout / "backend", env=dict(os.environ, WEFT_SECRET=secret, WEFT_DB_PATH=str(database)), timeout=900,
+        )
+        final = folder / f"{prefix}-v{version}-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{result.stdout.split()[-1]}.age"
+        os.link(incomplete, final)
+        directory = os.open(folder, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        incomplete.unlink(missing_ok=True)
+    print(f"Backup saved to {final}")
+    pattern = re.compile(rf"{prefix}-v(\d+)\.(\d+)\.(\d+)-\d{{8}}T\d{{6}}Z-[0-9a-f]+\.age")
+    backups = [(tuple(map(int, match.groups())), path) for path in folder.iterdir() if (match := pattern.fullmatch(path.name)) and path.is_file() and not path.is_symlink()]
+    kept = sorted({version for version, _ in backups}, reverse=True)[:2]
+    for version, path in backups:
+        if version not in kept:
+            path.unlink()
+            print(f"Removed older release backup {path.name}")
+
+
+def development_secret():
+    secret = run(["bash", "-c", 'set -a; source .env; printf %s "${WEFT_DEV_SECRET:-}"'], cwd=ROOT).stdout
+    if not secret:
+        raise RuntimeError("Set WEFT_DEV_SECRET in .env before publishing; the Dev backup needs it.")
+    return secret
+
+
 def release_runs():
     listed = run(["gh", "run", "list", "--workflow", "release.yml", "--branch", "main", "--event", "workflow_dispatch", "--limit", "20", "--json", "databaseId"], cwd=ROOT, timeout=30)
     return {entry["databaseId"] for entry in json.loads(listed.stdout)}
@@ -403,6 +459,7 @@ def release_runs():
 
 def publish_release():
     version = release_version(ROOT)
+    release_backup(ROOT, development_secret(), ROOT / "data" / "dev.db", ROOT / "data" / "backups", "weft-dev", version)
     print(f"Publishing Weft {version} from the pushed private main branch…", flush=True)
     earlier = release_runs()
     subprocess.run(["gh", "workflow", "run", "release.yml", "--ref", "main"], cwd=ROOT, check=True)
@@ -415,25 +472,56 @@ def publish_release():
     print(f"Released Weft {version}. Use Releases → Install or update Production to install it.")
 
 
+def install_production(ref):
+    subprocess.run(["git", "checkout", "--quiet", "--detach", ref], cwd=PRODUCTION, check=True)
+    subprocess.run(["npm", "ci", "--no-audit", "--no-fund"], cwd=PRODUCTION / "frontend", check=True, stdout=subprocess.DEVNULL)
+
+
+def newest_release_tag():
+    tags = run(["git", "tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"], cwd=PRODUCTION).stdout.split()
+    if not tags:
+        raise RuntimeError("No release has been published yet.")
+    return tags[0]
+
+
 def update_production():
     if not PRODUCTION.exists():
         print(f"Installing Production in {PRODUCTION}…", flush=True)
         subprocess.run(["git", "clone", "--quiet", PUBLIC_REPOSITORY, str(PRODUCTION)], check=True)
-        running = False
-    else:
-        if run(["git", "status", "--porcelain"], cwd=PRODUCTION).stdout.strip():
-            raise RuntimeError(f"{PRODUCTION} has local changes; Production must match a release. Inspect them before updating.")
-        running = subprocess.run([str(PRODUCTION / "weft"), "status"], cwd=PRODUCTION, capture_output=True, text=True).stdout.startswith("Weft is running")
-        subprocess.run(["git", "fetch", "--quiet", "--tags", "origin"], cwd=PRODUCTION, check=True)
-    tags = run(["git", "tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"], cwd=PRODUCTION).stdout.split()
-    if not tags:
-        raise RuntimeError("No release has been published yet.")
-    subprocess.run(["git", "checkout", "--quiet", "--detach", tags[0]], cwd=PRODUCTION, check=True)
-    subprocess.run(["npm", "ci", "--no-audit", "--no-fund"], cwd=PRODUCTION / "frontend", check=True, stdout=subprocess.DEVNULL)
-    print(f"Production has Weft {release_version(PRODUCTION)}.")
+        install_production(newest_release_tag())
+        print(f"Production has Weft {release_version(PRODUCTION)}. Start it from Production when ready.")
+        return
+    if run(["git", "status", "--porcelain"], cwd=PRODUCTION).stdout.strip():
+        raise RuntimeError(f"{PRODUCTION} has local changes; Production must match a release. Inspect them before updating.")
+    subprocess.run(["git", "fetch", "--quiet", "--tags", "origin"], cwd=PRODUCTION, check=True)
+    tag = newest_release_tag()
+    previous = run(["git", "rev-parse", "HEAD"], cwd=PRODUCTION).stdout.strip()
+    if run(["git", "rev-parse", f"{tag}^{{commit}}"], cwd=PRODUCTION).stdout.strip() == previous:
+        print(f"Production already has Weft {release_version(PRODUCTION)}.")
+        return
+    running = subprocess.run([str(PRODUCTION / "weft"), "status"], cwd=PRODUCTION, capture_output=True, text=True).stdout.startswith("Weft is running")
+    data = data_home()
     if running:
-        production("restart")
-    else:
+        production("stop")
+    try:
+        if (data / "weft.db").exists():
+            release_backup(PRODUCTION, (data / "installation.key").read_text().strip(), data / "weft.db", data / "backups", "weft-prod", release_version(PRODUCTION))
+        install_production(tag)
+        if running:
+            production("start")
+    except BaseException:
+        print("Update failed. Returning Production to its previous release…", file=sys.stderr, flush=True)
+        try:
+            production("stop")
+            if run(["git", "rev-parse", "HEAD"], cwd=PRODUCTION).stdout.strip() != previous:
+                install_production(previous)
+            if running:
+                production("start")
+        except Exception as error:
+            print(f"Rollback failed: {error}\nProduction is stopped. Inspect {PRODUCTION} before starting it.", file=sys.stderr)
+        raise
+    print(f"Production has Weft {release_version(PRODUCTION)}.")
+    if not running:
         print("Start it from Production when ready.")
 
 
