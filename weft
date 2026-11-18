@@ -348,7 +348,8 @@ def perform(profile, action):
             if action == "open":
                 if not healthy:
                     raise RuntimeError("Weft is not ready. Start it first, or inspect its logs.")
-                run(["open" if sys.platform == "darwin" else "xdg-open", profile.url(service["environment"])])
+                browser = ["open", "-a", "Google Chrome"] if sys.platform == "darwin" else ["xdg-open"]
+                run([*browser, profile.url(service["environment"])])
             elif healthy:
                 print(f"Weft is running at {profile.url(service['environment'])} (PID {service['pid']}).")
             elif service:

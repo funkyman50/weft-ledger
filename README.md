@@ -107,7 +107,7 @@ From a checkout, install the interface dependencies once, then open the menu:
 ./weft
 ```
 
-Choose **Start**, then **Open browser**. Start installs the Python packages, builds the interface and starts Weft at [localhost:9099](http://localhost:9099). Run `npm ci` again after updating the checkout. Each action is also available directly:
+Choose **Start**, then **Open browser**. On macOS, Open browser uses Google Chrome for both Development and Production; on Linux, it uses the default browser. Start installs the Python packages, builds the interface and starts Weft at [localhost:9099](http://localhost:9099). Run `npm ci` again after updating the checkout. Each action is also available directly:
 
 ```bash
 ./weft start
@@ -150,6 +150,8 @@ From the repository root, run the applicable source checks:
 (cd frontend && npm run lint)
 (cd frontend && npm run build)
 ```
+
+`scripts/check.sh` runs the checks CI runs: these, all regression tests and a runtime smoke test on disposable data. It reinstalls `frontend/node_modules` with `npm ci`, which removes the development server's dependency cache. If `./weft dev` is running, restart it afterwards; otherwise its pages stay blank.
 
 The regression tests for category names, reconciliation, Plaid connection and sync, and OpenAI connection checks use disposable databases. Run them when relevant to the change:
 
