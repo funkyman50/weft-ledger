@@ -94,7 +94,24 @@ Both ledgers show an ordinary editor's controls in its fixed-width Actions cell:
 
 ### Sync status and workspace notices
 
-- Last-sync time, result counts, review count, missing-pending count, and account-attributable, safely worded success/failure notices remain visible and survive an ordinary process restart. While recovery pauses bank activity, the [red recovery label](system.md#bank-activity-after-restore) occupies the Last Synced location instead.
+- Last-sync time, result counts, review count, missing-pending count, and account-attributable, safely worded success/failure notices remain visible and survive an ordinary process restart. While recovery pauses bank activity, the [red recovery label](system.md#bank-activity-after-restore) occupies the sync-time location instead.
+- Each Plaid Item stores two freshness times, which survive restarts: **Bank to Plaid sync**, Plaid's last successful transactions update from the bank (read with a free Item status request during each Item sync), and **Plaid to Weft sync**, the end of that Item's last successful Weft sync. Weft reads the Item status before transactions, so a failed Item sync still records Plaid's status; it does not change Plaid to Weft sync.
+- The sync-time location beside **Sync Plaid** shows both times stacked on two lines, labels aligned left and times aligned right. For a single Plaid account it shows that account's Item. For All Accounts, a group or a manual account it shows the oldest time of each kind across the Items in scope, or across all Items when none is in scope. An unknown time shows **—**, and an unknown time counts as oldest. Hovering lists both times for every Item.
+- When the shown Bank to Plaid sync time is more than 24 hours old, its whole line sits in a soft amber box with bold amber text. No warning text is added. This is a display only; it adds no notice and does not change sync.
+- Hover text for each Item adds **Plaid's last attempt failed {time}** when it is Failing and **Needs sign-in** when it needs sign-in.
+
+#### Bank health
+
+- Each Item also stores Plaid's last failed transactions update (`last_failed_update`) when Plaid reports one. An Item is **Needs sign-in** when a current sign-in/consent issue covers any of its accounts; otherwise **Failing** when its last failure is newer than its last success, or it has a failure and no success; otherwise healthy. **Behind** is the existing 24-hour amber state.
+- Failing and Needs sign-in show the red account icon described in the [account rail](accounts.md#account-rail-and-selection). Health is display only; it adds no notice, does not sync and costs nothing.
+
+#### Refresh from bank
+
+- **Refresh from bank…** asks Plaid to contact the bank now for one Item through Plaid's `/transactions/refresh`, which can count toward the Plaid plan's usage. Sync Plaid never requests a refresh.
+- It opens a confirmation naming the institution and every Weft account on that Item, stating that each refresh may count toward the Plaid plan's usage. Each confirmation sends at most one request; Weft does not retry it automatically and does not coordinate refreshes across browser tabs or installations.
+- After Plaid accepts it, Weft runs two ordinary syncs of all Items about two and six minutes later, without further refresh requests, so new data arrives without another press.
+- Outcomes are distinct notices: Plaid refuses the endpoint for this Plaid account (**Refresh isn't enabled on your Plaid plan.**); the bank or Item does not support Refresh; sign-in is required (recorded as the Item's sign-in issue, so Repair and the red icon appear); a temporary provider failure or rate limit; or a lost response, which may still have reached Plaid and counted toward usage, so the notice says to wait for the next sync instead of retrying.
+
 - Provider sign-in/consent errors, missing mapped accounts, local token custody failures, temporary provider failures, and non-fatal transaction warnings are distinct.
 - Missing-account notices identify the account actually needing access restored and explain that shared-Item siblings pause.
 - Warnings do not imply a failed repair.

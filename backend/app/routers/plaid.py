@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import read_snapshot
 from app.routers.deps import get_command_db, get_db
 from app.schemas import AccountCreate, LinkTokenOut, PlaidExchangeOut, PlaidStatus
-from app.services import account_conversion, backup_state, commands, plaid_settings
+from app.services import account_conversion, backup_state, commands, plaid_settings, plaid_sync
 from app.services.plaid_client import PlaidClient
 from app.services.plaid_sync import status as sync_status
 
@@ -33,6 +33,14 @@ def create_repair_link_token(
     with commands.page_operation(db, request.app.state.ledger_history, label="Bank repair token prepared."):
         result = {"link_token": account_conversion.repair_link_token(db, account_id, lambda: _client(request, db), request.app.state.settings.secret)}
     return result
+
+
+@router.post("/accounts/{account_id}/refresh")
+def refresh_bank(account_id: int, request: Request, db: Session = Depends(get_command_db)) -> dict:
+    with commands.page_operation(db, request.app.state.ledger_history, label="Bank refresh requested."):
+        institution = plaid_sync.refresh_item(db, account_id, lambda: _client(request, db), request.app.state.settings.secret)
+        request.app.state.plaid_sync_jobs.schedule_refresh_followups()
+    return {"message": f"Plaid is checking {institution} now. Weft will sync again in about 2 and 6 minutes."}
 
 
 class ExchangeRequest(BaseModel):

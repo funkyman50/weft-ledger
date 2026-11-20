@@ -282,6 +282,9 @@ class PlaidItem(Base):
     cursor: Mapped[str] = mapped_column(default="")
     institution: Mapped[str]
     institution_id: Mapped[str | None] = mapped_column(default=None)
+    bank_updated_at: Mapped[datetime | None] = mapped_column(default=None)
+    bank_failed_at: Mapped[datetime | None] = mapped_column(default=None)
+    synced_at: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class PlaidAccountLink(Base):

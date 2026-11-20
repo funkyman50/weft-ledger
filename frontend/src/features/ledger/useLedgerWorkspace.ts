@@ -16,6 +16,7 @@ type WorkspaceDialogs = {
   payeeDialogOpen: boolean
   payeeRecoveryActive: boolean
   exportDialogOpen: boolean
+  refreshDialogOpen: boolean
   newTransactionChooserOpen: boolean
   systemSettingsOpen: boolean
   startingBalanceAccountId: number | null
@@ -53,7 +54,7 @@ export function useLedgerWorkspace({
 }) {
   const {
     loanDialogOpen, accountDialog, conversion, categoryDialogOpen, payeeDialogOpen, payeeRecoveryActive,
-    exportDialogOpen, newTransactionChooserOpen, systemSettingsOpen,
+    exportDialogOpen, refreshDialogOpen, newTransactionChooserOpen, systemSettingsOpen,
     startingBalanceAccountId, defaultSuggestionDialog, reveal,
   } = dialogs
   const [scheduleGuard, setScheduleGuard] = useState<ScheduleGuard>({ blocked: false, recoveryOwned: false })
@@ -90,7 +91,7 @@ export function useLedgerWorkspace({
     || conversion?.outcomeUnknown
     || categoryDialogOpen
     || payeeDialogOpen
-    || exportDialogOpen
+    || exportDialogOpen || refreshDialogOpen
     || newTransactionChooserOpen
     || systemSettingsOpen
     || loanDialogOpen || startingBalanceAccountId !== null
@@ -118,7 +119,7 @@ export function useLedgerWorkspace({
   remainingWorkRef.current = Boolean(editor.editingRef.current || editor.writePending || commands.anyPending || commands.recovery || bulkStaged || matchWorkflow.dialog || pendingWorkflow.active || transferWorkflow.dialog || transferWorkflow.queueActive || loanDialogOpen || startingBalanceAccountId !== null)
   const { splitHasChanges, splitSessionActive, cancelEditing: cancelEditorSession, editingRef, quickCreateBlocked, requestExit: requestManualExit } = editor
   const continuationDialogRef = useRef(false)
-  continuationDialogRef.current = Boolean(accountDialog || conversion?.open || categoryDialogOpen || payeeDialogOpen || exportDialogOpen || newTransactionChooserOpen || systemSettingsOpen || loanDialogOpen || startingBalanceAccountId !== null || defaultSuggestionDialog || matchWorkflow.dialog || pendingWorkflow.active || transferWorkflow.dialog || transferWorkflow.queueActive)
+  continuationDialogRef.current = Boolean(accountDialog || conversion?.open || categoryDialogOpen || payeeDialogOpen || exportDialogOpen || refreshDialogOpen || newTransactionChooserOpen || systemSettingsOpen || loanDialogOpen || startingBalanceAccountId !== null || defaultSuggestionDialog || matchWorkflow.dialog || pendingWorkflow.active || transferWorkflow.dialog || transferWorkflow.queueActive)
   const requestAction = useCallback((action: () => void) => {
     if (loanDialogOpen) { showNotice('Finish or cancel loan review first.'); return }
     if (workspaceLeavingRef.current) { workspaceLeavingRef.current.action = action; return }
@@ -193,7 +194,7 @@ export function useLedgerWorkspace({
     || payeeDialogOpen
     || categoryDialogOpen
     || accountDialog
-    || exportDialogOpen
+    || exportDialogOpen || refreshDialogOpen
     || newTransactionChooserOpen
     || systemSettingsOpen
     || loanDialogOpen || startingBalanceAccountId !== null
@@ -243,7 +244,7 @@ export function useLedgerWorkspace({
     || categoryDialogOpen
     || payeeDialogOpen
     || systemSettingsOpen
-    || exportDialogOpen
+    || exportDialogOpen || refreshDialogOpen
     || newTransactionChooserOpen
     || loanDialogOpen || startingBalanceAccountId !== null
     || conversion?.open,

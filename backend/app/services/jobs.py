@@ -79,6 +79,19 @@ class PlaidSyncJobs:
                     except JobLookupError:
                         pass
 
+    def schedule_refresh_followups(self) -> None:
+        with self._lock:
+            if self._stopping:
+                return
+            for minutes in (2, 6):
+                self.scheduler.add_job(
+                    self.run,
+                    "date",
+                    run_date=datetime.now() + timedelta(minutes=minutes),
+                    id=f"plaid_refresh_followup_{minutes}",
+                    replace_existing=True,
+                )
+
     def initial_import_account_ids(self, db) -> list[int]:
         if backup_state.bank_sync_paused(self.settings.db_path):
             return []

@@ -35,6 +35,12 @@ System settings opens from the rail gear. Its Display tab provides these browser
 - Metadata and review commit atomically in the existing edit command and Undo/Redo history. Undo/Redo restore that saved result regardless of the current preference. Pending lifecycle, clearance and independent split warnings do not change.
 - A confirmed response supplies the saved Reviewed state before refresh. The existing fresh-read policy removes reviewed rows from Needs review and clears an exhausted review-status filter while preserving other filters. Existing keyboard return/fallback behavior applies; no automatic next-row focus is added. Failed and uncertain saves keep their existing recovery rules. Unknown-outcome recovery refreshes authoritative data without predicting review or automatically clearing an exhausted review filter.
 
+### Workspace header
+
+- The title row shows the ledger name. For a single account, a quiet pencil button, **Edit account**, follows the name and the account type label sits under it. All Accounts and groups show only the name.
+- The title row's right end holds the Plaid [sync times](account-workflows.md#sync-status-and-workspace-notices) followed by **Sync Plaid**.
+- Every ledger scope shows a view tab bar under the title, ending in the header line above the register. Its tabs are **Transactions**, **Calendar** and **Visualize**. Transactions is the only working view; Calendar and Visualize are disabled placeholders. **Export** sits at the tab bar's right end as a quiet action, because it acts on the open view.
+
 ### Layout, filters and totals
 
 The register must preserve these layout, filtering and selection requirements:
@@ -355,7 +361,7 @@ Temporary write and refresh guards keep the register's otherwise available contr
 
 ## CSV export
 
-- One bordered Export button sits in the upper-right workspace action row beside Sync Plaid.
+- One quiet Export button sits at the right end of the [view tab bar](#workspace-header).
 - It opens one two-column dialog: account checklist on the left and an Include group on the right with independent Transaction History and Scheduled Transactions checkboxes.
 - Default Transaction History on and Scheduled Transactions off. Require at least one export type. Each selected type produces one CSV for the selected accounts.
 - Show date range, split representation and Include bank-pending transactions only while Transaction History is selected. Preserve their drafts while toggled off and ignore their validation and values for a schedules-only export.

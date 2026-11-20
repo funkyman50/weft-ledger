@@ -49,7 +49,7 @@ The register preserves bottom or reading position through ordinary refreshes. Wi
 
 ## CSV exports
 
-**Export** sits beside Sync Plaid. Its modal offers **Transaction History** and **Scheduled Transactions** independently. Select accounts and either type to download a CSV, or both types to download one ZIP containing the two CSVs. The browser controls the save location and any filename dialog through its ordinary download settings, including saving to Downloads.
+**Export** sits at the right end of the view tab bar (Transactions, Calendar, Visualize) under the ledger title. Its modal offers **Transaction History** and **Scheduled Transactions** independently. Select accounts and either type to download a CSV, or both types to download one ZIP containing the two CSVs. The browser controls the save location and any filename dialog through its ordinary download settings, including saving to Downloads.
 
 Transaction export includes the ledger's data columns, including Bank description, Outflow, Inflow and Balance. Balances follow full account history even when export dates or pending transactions are filtered. Split category rows repeat the balance after the whole transaction.
 

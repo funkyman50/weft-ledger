@@ -51,7 +51,8 @@ class PlaidSyncTests(unittest.TestCase):
             ))
             db.commit()
 
-            client = Mock(spec=["sync", "accounts", "institution_details"])
+            client = Mock(spec=["sync", "accounts", "institution_details", "transactions_status"])
+            client.transactions_status.return_value = (None, None)
             client.sync.return_value = ([{
                 "transaction_id": "bank-transaction", "account_id": "bank-account",
                 "date": "2026-10-13", "name": "Purchase", "amount": 25,

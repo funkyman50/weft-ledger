@@ -8,6 +8,7 @@ import base64
 import hashlib
 import json
 import time
+from datetime import datetime
 
 import certifi
 import plaid
@@ -31,6 +32,7 @@ from plaid.model.link_token_create_request_update import LinkTokenCreateRequestU
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.link_token_transactions import LinkTokenTransactions
 from plaid.model.products import Products
+from plaid.model.transactions_refresh_request import TransactionsRefreshRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from plaid.model.transactions_sync_request_options import TransactionsSyncRequestOptions
 from urllib3.exceptions import TimeoutError as TransportTimeout
@@ -344,6 +346,18 @@ class PlaidClient:
             has_more = response["has_more"]
             update_status = response.get("transactions_update_status", update_status)
         return added, modified, removed, cursor, update_status
+
+    def transactions_status(self, access_token: str) -> tuple[datetime | None, datetime | None]:
+        response = self._call("item_get", ItemGetRequest(access_token=access_token)).to_dict()
+        status = (response.get("status") or {}).get("transactions") or {}
+        updated, failed = status.get("last_successful_update"), status.get("last_failed_update")
+        return (
+            updated.astimezone().replace(tzinfo=None) if updated else None,
+            failed.astimezone().replace(tzinfo=None) if failed else None,
+        )
+
+    def transactions_refresh(self, access_token: str) -> None:
+        self._call("transactions_refresh", TransactionsRefreshRequest(access_token=access_token))
 
     def accounts(self, access_token: str) -> list[dict]:
         response = self._call("accounts_get",

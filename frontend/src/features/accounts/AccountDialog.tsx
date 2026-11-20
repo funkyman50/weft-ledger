@@ -36,9 +36,12 @@ interface AccountDialogProps {
   onLoanDetails: () => void
   onStartingBalance: () => void
   onConnectBank: () => void
+  initialAction?: AccountDialogAction
 }
 
-export function AccountDialog({ account, accounts, plaidStatus, onClose, onCreated, onClosed, onReopened, onDeleted, onLoanDetails, onStartingBalance, onConnectBank }: AccountDialogProps) {
+export type AccountDialogAction = 'logo' | 'close' | 'reopen' | 'repair'
+
+export function AccountDialog({ account, accounts, plaidStatus, onClose, onCreated, onClosed, onReopened, onDeleted, onLoanDetails, onStartingBalance, onConnectBank, initialAction }: AccountDialogProps) {
   const isCreate = !account
   const [name, setName] = useState(account?.name ?? '')
   const [type, setType] = useState(account?.type ?? 'checking')
@@ -47,7 +50,8 @@ export function AccountDialog({ account, accounts, plaidStatus, onClose, onCreat
   const [cashFlowChoice, setCashFlowChoice] = useState<boolean | null>(account?.cash_flow_reporting ?? null)
   const cashFlowReporting = cashFlowChoice ?? (type !== 'loan')
   const [netWorthReporting, setNetWorthReporting] = useState(account?.net_worth_reporting ?? true)
-  const [logoPickerOpen, setLogoPickerOpen] = useState(false)
+  const [logoPickerOpen, setLogoPickerOpen] = useState(initialAction === 'logo')
+  const initialActionRan = useRef(false)
   const [editingName, setEditingName] = useState(false)
   const renameRef = useRef<HTMLButtonElement>(null)
   const returnToRename = useRef(false)
@@ -324,6 +328,13 @@ export function AccountDialog({ account, accounts, plaidStatus, onClose, onCreat
       }
     } catch (caught) { setError(apiErrorMessage(caught, 'Could not load the close preview.')) }
   }
+
+  useEffect(() => {
+    if (initialActionRan.current || !account) return
+    if (initialAction === 'close' && !account.closed && canRunLifecycle) { initialActionRan.current = true; void beginClose() }
+    if (initialAction === 'reopen' && account.closed && canRunLifecycle) { initialActionRan.current = true; void changeClosed(false) }
+    if (initialAction === 'repair' && repairOffered && canRunLifecycle) { initialActionRan.current = true; beginRepair() }
+  })
 
   const confirmClose = async (disconnectBank: boolean) => {
     setCloseAction(disconnectBank ? 'disconnect' : 'stay-connected')

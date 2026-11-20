@@ -77,7 +77,10 @@ CREATE TABLE plaid_items (
     access_token_enc TEXT NOT NULL,
     cursor TEXT NOT NULL,
     institution TEXT NOT NULL,
-    institution_id TEXT
+    institution_id TEXT,
+    bank_updated_at DATETIME,
+    bank_failed_at DATETIME,
+    synced_at DATETIME
 );
 
 CREATE TABLE plaid_sync_state (
@@ -314,4 +317,4 @@ CREATE TABLE account_balance_observations (
 );
 CREATE INDEX ix_account_balance_observations_account_recorded ON account_balance_observations (account_id, recorded_at, id);
 
-PRAGMA user_version = 36;
+PRAGMA user_version = 38;

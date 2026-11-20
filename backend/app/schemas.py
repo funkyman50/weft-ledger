@@ -1191,6 +1191,16 @@ class PlaidStatus(BaseModel):
     queued: int = 0
     errors: list["PlaidSyncIssue"] = Field(default_factory=list)
     initial_import_account_ids: list[int] = Field(default_factory=list)
+    connections: list["PlaidConnectionFreshness"] = Field(default_factory=list)
+
+
+class PlaidConnectionFreshness(BaseModel):
+    institution: str
+    account_ids: list[int]
+    bank_updated_at: datetime | None = None
+    bank_failed_at: datetime | None = None
+    synced_at: datetime | None = None
+    health: Literal["ok", "failing", "needs_sign_in"]
 
 
 class PlaidSyncIssue(BaseModel):

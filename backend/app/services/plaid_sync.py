@@ -28,6 +28,7 @@ from app.services import (
 from app.services.plaid_client import (
     PlaidClient,
     decrypt_access_token,
+    plaid_error_code,
     plaid_error_kind,
 )
 
@@ -103,7 +104,75 @@ def status(db: Session) -> dict:
         "suggested": state.suggested,
         "queued": state.queued,
         "errors": errors,
+        "connections": connections(db, {account_id for issue in errors if issue["kind"] == "login_required" for account_id in issue["account_ids"]}),
     }
+
+
+def connections(db: Session, sign_in_account_ids: set[int]) -> list[dict]:
+    links = db.execute(select(PlaidAccountLink.plaid_item_id, PlaidAccountLink.account_id)).all()
+    result = []
+    for item in db.scalars(select(PlaidItem).order_by(PlaidItem.id)).all():
+        account_ids = sorted(account_id for item_id, account_id in links if item_id == item.id)
+        if not account_ids:
+            continue
+        if sign_in_account_ids.intersection(account_ids):
+            health = "needs_sign_in"
+        elif item.bank_failed_at is not None and (item.bank_updated_at is None or item.bank_failed_at > item.bank_updated_at):
+            health = "failing"
+        else:
+            health = "ok"
+        result.append({
+            "institution": item.institution,
+            "account_ids": account_ids,
+            "bank_updated_at": item.bank_updated_at,
+            "bank_failed_at": item.bank_failed_at,
+            "synced_at": item.synced_at,
+            "health": health,
+        })
+    return result
+
+
+def _store_bank_status(db: Session, snapshot: "_SyncItem", updated_at: datetime | None, failed_at: datetime | None) -> None:
+    item = db.get(PlaidItem, snapshot.id)
+    if item is not None and item.item_id == snapshot.item_id:
+        item.bank_updated_at, item.bank_failed_at = updated_at, failed_at
+    db.commit()
+
+
+def refresh_item(db: Session, account_id: int, client_factory: Callable[[], PlaidClient], secret: str) -> str:
+    link = db.scalar(select(PlaidAccountLink).where(PlaidAccountLink.account_id == account_id))
+    if link is None:
+        raise AppError("plaid_account_not_connected", "This account is not connected to a bank.", 409)
+    item = db.get(PlaidItem, link.plaid_item_id)
+    account_ids = sorted(db.scalars(select(PlaidAccountLink.account_id).where(PlaidAccountLink.plaid_item_id == item.id)).all())
+    institution = item.institution
+    client = client_factory()
+    token = decrypt_access_token(secret, item.access_token_enc)
+    db.rollback()
+    try:
+        client.transactions_refresh(token)
+    except AppError as error:
+        if error.code == "plaid_timeout":
+            raise AppError("plaid_refresh_unknown", f"{institution}: Plaid did not answer in time. The refresh may still have reached Plaid and been billed, so wait for the next sync instead of trying again.", 504) from error
+        raise
+    except Exception as error:
+        code = plaid_error_code(error)
+        kind = plaid_error_kind(error)
+        if code in {"INVALID_PRODUCT", "UNAUTHORIZED_ROUTE_ACCESS"}:
+            raise AppError("plaid_refresh_not_enabled", "Refresh isn't enabled on your Plaid plan. Sync Plaid still receives Plaid's regular updates.", 409) from error
+        if code in {"PRODUCTS_NOT_SUPPORTED", "PRODUCT_NOT_ENABLED"}:
+            raise AppError("plaid_refresh_not_supported", f"{institution}: this bank connection does not support Refresh. Sync Plaid still receives Plaid's regular updates.", 409) from error
+        if kind == "login_required":
+            state = sync_state(db)
+            issue = _issue("login_required", account_ids=account_ids)
+            if issue not in (state.errors or []):
+                state.errors = [*(state.errors or []), issue]
+            db.commit()
+            raise AppError("plaid_refresh_login_required", f"{institution}: the bank needs you to sign in again. Use Repair connection.", 409) from error
+        if kind == "temporary" or code == "PRODUCT_NOT_READY":
+            raise AppError("plaid_refresh_temporary", f"{institution}: Plaid could not refresh this bank right now. Try again later.", 503) from error
+        raise AppError("plaid_refresh_failed", f"{institution}: Plaid could not refresh this bank connection.", 502) from error
+    return institution
 
 
 _ISSUE_MESSAGES = {
@@ -553,6 +622,7 @@ def _apply_fetched_item(
         state.matched += transfers.reconcile_automatic(db, newly_ready)
     state.matched += transfers.reconcile_automatic(db, affected - newly_ready, transaction_ids=changed_transaction_ids or None)
     item.cursor = fetched.cursor
+    item.synced_at = datetime.now()
     incomplete = any(
         account is not None and account.plaid_history_imported_at is None
         for account in linked_accounts
@@ -590,6 +660,7 @@ def run_sync(
         with operation("sync.item", item_id=item.id) as outcome:
             try:
                 token = decrypt_access_token(settings.secret, item.access_token_enc)
+                _store_bank_status(db, item, *client.transactions_status(token))
                 fetched = _fetch_item(client, token, item)
                 incomplete = _apply_fetched_item(db, item, fetched, today)
                 outcome.update(state="fetching" if incomplete else "complete", added=len(fetched.added), modified=len(fetched.modified), removed=len(fetched.removed))

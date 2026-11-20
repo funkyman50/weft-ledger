@@ -448,6 +448,15 @@ export interface LedgerHistoryPreview {
   warning: string | null
 }
 
+export interface PlaidConnectionFreshness {
+  institution: string
+  account_ids: number[]
+  bank_updated_at: string | null
+  bank_failed_at: string | null
+  synced_at: string | null
+  health: 'ok' | 'failing' | 'needs_sign_in'
+}
+
 export interface PlaidStatus {
   bank_sync_paused: boolean
   schedule_revision: number
@@ -463,6 +472,7 @@ export interface PlaidStatus {
     account_ids: number[]
     missing_account_ids: number[]
   }>
+  connections: PlaidConnectionFreshness[]
 }
 
 export type MatchSource = 'feed' | 'history'

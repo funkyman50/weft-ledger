@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react'
 import type { FocusEvent, PointerEvent, ReactNode } from 'react'
-import { Pencil, Redo, TriangleAlert, Undo, X } from 'lucide-react'
+import { Download, Pencil, Redo, TriangleAlert, Undo, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   invalidateAccountAndTransactionQueries,
@@ -27,11 +27,12 @@ import { FilterSelect } from '../../components/FilterSelect'
 import { Modal, ModalCornerProvider, ModalRecoveryNoticeProvider } from '../../components/Modal'
 import { money } from '../../lib/money'
 import type { MatchDialogMode } from './MatchDialog'
-import { PlaidConnectionWorkflow, PlaidSyncAction } from '../plaid/PlaidConnectionWorkflow'
+import { PlaidConnectionWorkflow, PlaidSyncAction, RefreshBankDialog } from '../plaid/PlaidConnectionWorkflow'
 import { useLedgerPage } from './useLedgerPage'
 import { hasActiveLedgerFilters } from './ledgerFilters'
 import { resetInitializationIntroCooldown } from '../accounts/initializationOnboardingCooldown'
-import { AccountRail } from '../accounts/AccountRail'
+import { AccountRail, type AccountMenuAction, type ConnectionHealth } from '../accounts/AccountRail'
+import type { AccountDialogAction } from '../accounts/AccountDialog'
 import { accountBankDifference } from '../accounts/accountBalances'
 import { accountTypeLabel } from '../accounts/accountTypes'
 import { LedgerRegisterTable } from './LedgerTable'
@@ -332,13 +333,16 @@ export function LedgerScreen() {
   const [accountDialog, setAccountDialog] = useState<{
     mode: 'create' | 'edit'
     accountId?: number
+    action?: AccountDialogAction
   } | null>(null)
+  const [refreshAccount, setRefreshAccount] = useState<Account | null>(null)
   const [conversion, setConversion] = useState<{ accountId: number; open: boolean; outcomeUnknown: boolean } | null>(null)
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [payeeDialogOpen, setPayeeDialogOpen] = useState(false)
   const [payeeDialogSelection, setPayeeDialogSelection] = useState<number | null>(null)
   const [payeeRecoveryActive, setPayeeRecoveryActive] = useState(false)
-  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportScope, setExportScope] = useState<AccountScope | null>(null)
+  const exportDialogOpen = exportScope !== null
   const [newTransactionChooserOpen, setNewTransactionChooserOpen] = useState(false)
   const [newTransactionAccountId, setNewTransactionAccountId] = useState<number | null>(null)
   const [newEntryOrigin, setNewEntryOrigin] = useState<'transaction' | 'transfer'>('transaction')
@@ -648,6 +652,7 @@ export function LedgerScreen() {
       payeeDialogOpen,
       payeeRecoveryActive,
       exportDialogOpen,
+      refreshDialogOpen: refreshAccount !== null,
       newTransactionChooserOpen,
       systemSettingsOpen,
       startingBalanceAccountId,
@@ -660,7 +665,7 @@ export function LedgerScreen() {
     isCurrentAccount, defaultSuggestionAdmission, systemSettingsBlocked, entryRecoveryBlocked, scheduleBlocked,
   } = workspace
   const emptyGroupFallbackRef = useRef<string | null>(null)
-  const groupFallbackBlocked = Boolean(hasRemainingWork() || entryRecoveryBlocked || scheduleBlocked || accountDialog || exportDialogOpen || systemSettingsOpen || categoryDialogOpen || payeeDialogOpen)
+  const groupFallbackBlocked = Boolean(hasRemainingWork() || entryRecoveryBlocked || scheduleBlocked || accountDialog || exportDialogOpen || refreshAccount || systemSettingsOpen || categoryDialogOpen || payeeDialogOpen)
   useEffect(() => {
     if (groupName === null || scopeAccounts.length) { emptyGroupFallbackRef.current = null; return }
     if (emptyGroupFallbackRef.current === groupName || groupFallbackBlocked) return
@@ -910,6 +915,15 @@ export function LedgerScreen() {
 
   const refreshRevealProgress = useCallback(() => refreshReveal(false), [refreshReveal])
 
+  const connectionHealth = useMemo(() => new Map((plaidStatus?.connections ?? []).flatMap((connection) => connection.health === 'ok' ? [] : connection.account_ids.map((id) => [id, connection.health as ConnectionHealth] as const))), [plaidStatus])
+  const repairableAccountIds = useMemo(() => new Set((plaidStatus?.errors ?? []).filter((issue) => issue.kind === 'login_required' || issue.kind === 'missing_account').flatMap((issue) => issue.account_ids)), [plaidStatus])
+  const onAccountAction = (account: Account, action: AccountMenuAction) => {
+    if (action === 'export') { requestManagerEntry(() => setExportScope(account.id)); return }
+    if (action === 'loan') { requestManagerEntry(() => setLoanDetails({ account, resolveAfter: false })); return }
+    if (action === 'refresh') { requestManagerEntry(() => setRefreshAccount(account)); return }
+    if (action === 'connect') { requestWorkspaceAction(() => setConversion({ accountId: account.id, open: true, outcomeUnknown: false })); return }
+    requestWorkspaceAction(() => setAccountDialog({ mode: 'edit', accountId: account.id, action: action === 'edit' ? undefined : action }))
+  }
   const dialogAccount = accountDialog?.mode === 'edit'
     ? (accounts ?? []).find((account) => account.id === accountDialog.accountId)
     : undefined
@@ -979,6 +993,9 @@ export function LedgerScreen() {
         onManagePayees={() => requestManagerEntry(() => { setPayeeDialogSelection(null); setPayeeDialogOpen(true) })}
         onSystemSettings={requestSystemSettingsEntry}
         onError={showNotice}
+        health={connectionHealth}
+        repairableAccountIds={repairableAccountIds}
+        onAccountAction={onAccountAction}
       />
 
       <main className="bp-main">
@@ -999,10 +1016,15 @@ export function LedgerScreen() {
         </div>
         <div className="bp-visually-hidden" role="status" aria-atomic="true"><span key={noticeAnnouncement.revision}>{noticeAnnouncement.message}</span></div>
         <div className="bp-workspace-heading">
-          {(selectedAccount || combinedScopeSelected) && <h1>{groupName ?? (combinedScopeSelected ? 'All Accounts' : selectedAccount?.name)}</h1>}
+          {(selectedAccount || combinedScopeSelected) && <div className="bp-title-block">
+            <div className="bp-title-row">
+              <h1>{groupName ?? (combinedScopeSelected ? 'All Accounts' : selectedAccount?.name)}</h1>
+              {selectedAccount && <Button ref={initializationEditButtonRef} size="md" variant="quiet" aria-label="Edit account" title="Edit account" onClick={() => requestWorkspaceAction(() => setAccountDialog({ mode: 'edit', accountId: selectedAccount.id }))}><Pencil aria-hidden="true" /></Button>}
+            </div>
+            {selectedAccount && <span className="bp-label">{accountTypeLabel(selectedAccount.type)} account</span>}
+          </div>}
           <div className="bp-top-actions">
-            <PlaidSyncAction hasConnections={hasPlaidConnections} status={plaidStatus} onNotice={showError} />
-            {selectedAccountId !== null && <Button size="md" onClick={() => requestManagerEntry(() => setExportDialogOpen(true))}>Export</Button>}
+            <PlaidSyncAction hasConnections={hasPlaidConnections} status={plaidStatus} scopeAccountIds={scopeAccounts.map((account) => account.id)} onNotice={showError} />
           </div>
         </div>
 
@@ -1014,15 +1036,16 @@ export function LedgerScreen() {
           <div className="bp-empty"><span className="bp-empty-mark">＋</span><h1>Create your first account</h1><p>Add an account you manage yourself, or connect a bank to create accounts and import activity.</p><div className="bp-empty-actions"><Button size="lg" onClick={() => setAccountDialog({ mode: 'create' })}>New account</Button><PlaidConnectionWorkflow onError={showNotice} /></div></div>
         ) : (selectedAccount || combinedScopeSelected) ? (
           <div className="bp-content">
-            {selectedAccount && <section className="bp-account-header">
+            <section className="bp-account-header">
               <div className="bp-account-header-row">
-                <div className="bp-account-label-row">
-                  <span className="bp-label">{accountTypeLabel(selectedAccount.type)} account</span>
-                  <Button ref={initializationEditButtonRef} className="bp-account-edit-button" size="md" variant="quiet" aria-label="Edit account" onClick={() => requestWorkspaceAction(() => setAccountDialog({ mode: 'edit', accountId: selectedAccount.id }))}><Pencil aria-hidden="true" /><span>Edit</span></Button>
+                <div className="bp-tabs" role="tablist" aria-label="Ledger views">
+                  <button className="is-active" type="button" role="tab" aria-selected="true">Transactions</button>
+                  <button type="button" role="tab" aria-selected="false" disabled>Calendar</button>
+                  <button type="button" role="tab" aria-selected="false" disabled>Visualize</button>
                 </div>
-                <div className="bp-tabs" role="tablist" aria-label="Account sections"><button className="is-active" type="button" role="tab" aria-selected="true">Transactions</button></div>
+                <Button size="md" variant="quiet" onClick={() => requestManagerEntry(() => setExportScope(selectedAccountId))}><Download aria-hidden="true" />Export</Button>
               </div>
-            </section>}
+            </section>
 
             <section className="bp-ledger" ref={page.ledgerSectionRef}>
               <div className={`bp-ledger-lock${initializationPending && !resolvingFromInitialization ? ' is-locked' : ''}`} inert={initializationPending && !resolvingFromInitialization} aria-hidden={initializationPending && !resolvingFromInitialization || undefined}>
@@ -1221,6 +1244,7 @@ export function LedgerScreen() {
         account={dialogAccount}
         accounts={accounts ?? []}
         plaidStatus={plaidStatus}
+        initialAction={accountDialog.action}
         onClose={() => setAccountDialog(null)}
         onLoanDetails={() => requestManagerEntry(() => { setAccountDialog(null); setLoanDetails({ account: dialogAccount!, resolveAfter: false }) })}
         onStartingBalance={() => requestManagerEntry(() => { resetInitializationIntroCooldown(); setAccountDialog(null); setStartingBalanceAccountId(dialogAccount!.id) })}
@@ -1257,7 +1281,8 @@ export function LedgerScreen() {
       {startingBalanceAccount && <StartingBalanceDialog account={startingBalanceAccount} returnFocusRef={startingBalanceAccount.starting_balance_initialized_at === null ? initializationStartButtonRef : initializationEditButtonRef} suspended={pendingWorkflow.initializationAccountId === startingBalanceAccount.id} onResolveMissingPending={(row) => pendingWorkflow.openResolution(row, startingBalanceAccount.id)} onInspectHistory={history.inspect} onClose={() => setStartingBalanceAccountId(null)} onSaved={() => { setStartingBalanceAccountId(null); showNotice('Account initialized.') }} />}
       {categoryDialogOpen && <CategoryManagerDialog onClose={() => setCategoryDialogOpen(false)} />}
       {payeeDialogOpen && <PayeeManagerDialog initialPayeeId={payeeDialogSelection} accounts={accounts ?? []} onClose={() => setPayeeDialogOpen(false)} onInspectHistory={history.inspect} onRecoveryChange={setPayeeRecoveryActive} onPayeeReplaced={page.replacePayeeFilter} />}
-      {exportDialogOpen && selectedAccountId !== null && <ExportDialog accounts={accounts ?? []} currentAccountId={selectedAccountId} onClose={() => setExportDialogOpen(false)} />}
+      {exportScope !== null && <ExportDialog accounts={accounts ?? []} currentAccountId={exportScope} onClose={() => setExportScope(null)} />}
+      {refreshAccount && <RefreshBankDialog account={refreshAccount} accounts={accounts ?? []} status={plaidStatus} onClose={() => setRefreshAccount(null)} onNotice={showNotice} />}
       {newTransactionChooserOpen && <Modal size="sm" labelledBy="new-transaction-chooser-title" extraFocusSelector=".bp-filter-select-popover button:not(:disabled), .bp-filter-select-popover input:not(:disabled)" onRequestClose={() => setNewTransactionChooserOpen(false)}>
         <DialogHeader titleId="new-transaction-chooser-title" title={newEntryOrigin === 'transfer' ? 'New transfer' : 'New transaction'} subtitle={`Choose the account for this ${newEntryOrigin}.`} onClose={() => setNewTransactionChooserOpen(false)} />
         <div className="bp-dialog-body"><label className="bp-field">Account<FilterSelect ariaLabel="Transaction account" value={newTransactionAccountId === null ? '' : String(newTransactionAccountId)} options={newTransactionAccountOptions} searchable onChange={(value) => setNewTransactionAccountId(Number(value))} /></label></div>

@@ -1,10 +1,13 @@
 import type { AccountScope } from '../../lib/accountScope'
-import { useCallback, useId, useState } from 'react'
-import { ChevronDown, ChevronRight, Search, Settings, TriangleAlert } from 'lucide-react'
+import { createContext, use, useCallback, useId, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Check, ChevronDown, ChevronRight, Search, Settings, TriangleAlert } from 'lucide-react'
 
-import { ApiError } from '../../api/client'
-import { useReorderAccounts } from '../../api/hooks'
+import { ApiError, apiClient } from '../../api/client'
+import { invalidateAccountAndTransactionQueries, useReorderAccounts } from '../../api/hooks'
+import { isComposingKey } from '../../lib/keyboard'
 import { money } from '../../lib/money'
+import { ActionMenu, ActionMenuItem } from '../../components/ActionMenu'
 import { Button } from '../../components/Button'
 import { HelpTooltip } from '../../components/HelpTooltip'
 import type { Account } from '../../api/types'
@@ -17,6 +20,13 @@ import { useSortableAccountRail } from './useSortableAccountRail'
 declare const __WEFT_VERSION__: string
 declare const __WEFT_CHANNEL__: 'dev' | 'prod'
 declare const __WEFT_BUILD__: string
+
+export type AccountMenuAction = 'edit' | 'logo' | 'loan' | 'export' | 'refresh' | 'repair' | 'connect' | 'close' | 'reopen'
+export type ConnectionHealth = 'failing' | 'needs_sign_in'
+
+const HEALTH_REASON: Record<ConnectionHealth, string> = { failing: "Bank connection failing: Plaid's last attempt failed", needs_sign_in: 'Bank connection needs sign-in' }
+
+const AccountMenuContext = createContext<{ health: Map<number, ConnectionHealth>; open: (account: Account, event: MouseEvent<HTMLButtonElement>) => void }>({ health: new Map(), open: () => {} })
 
 const releaseName = `v${__WEFT_VERSION__}${__WEFT_CHANNEL__ === 'dev' ? ' dev' : ''}`
 
@@ -33,6 +43,9 @@ export function AccountRail({
   onManagePayees,
   onSystemSettings,
   onError,
+  health,
+  repairableAccountIds,
+  onAccountAction,
 }: {
   showAccountIcons: boolean
   highlightBankDifferences: boolean
@@ -46,7 +59,58 @@ export function AccountRail({
   onManagePayees: () => void
   onSystemSettings: (trigger: HTMLButtonElement) => void
   onError: (message: string) => void
+  health: Map<number, ConnectionHealth>
+  repairableAccountIds: Set<number>
+  onAccountAction: (account: Account, action: AccountMenuAction) => void
 }) {
+  const [menu, setMenu] = useState<{ account: Account; left: number; top: number; trigger: HTMLButtonElement } | null>(null)
+  const menuAnchorRef = useRef<HTMLSpanElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const groupItemRef = useRef<HTMLButtonElement>(null)
+  const groupMenuRef = useRef<HTMLDivElement>(null)
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false)
+  const openMenu = useCallback((account: Account, event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    const trigger = event.currentTarget
+    const row = trigger.getBoundingClientRect()
+    // Keyboard-opened context menus report no pointer position.
+    const fromKeyboard = event.clientX === 0 && event.clientY === 0
+    setGroupMenuOpen(false)
+    setMenu({ account, left: fromKeyboard ? row.left + 24 : event.clientX, top: fromKeyboard ? row.bottom : event.clientY, trigger })
+  }, [])
+  const closeMenu = useCallback((restoreFocus: boolean) => {
+    if (restoreFocus) menu?.trigger.focus()
+    setGroupMenuOpen(false)
+    setMenu(null)
+  }, [menu])
+  const choose = (action: AccountMenuAction) => {
+    const { account } = menu!
+    closeMenu(true)
+    onAccountAction(account, action)
+  }
+  const queryClient = useQueryClient()
+  const moveToGroup = useMutation({
+    mutationFn: ({ account, group }: { account: Account; group: string | null }) => apiClient.patch<Account>(`/api/accounts/${account.id}`, { group_name: group }),
+    onSuccess: () => invalidateAccountAndTransactionQueries(queryClient),
+    onError: (error) => onError(error instanceof ApiError ? error.message : 'The account group could not be saved.'),
+  })
+  const chooseGroup = (group: string | null) => {
+    const { account } = menu!
+    closeMenu(true)
+    if (group !== account.group_name) moveToGroup.mutate({ account, group })
+  }
+  const groupNames = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const account of [...openAccounts, ...closedAccounts]) {
+      if (account.group_name) names.set(account.group_name.toLocaleLowerCase(), account.group_name)
+    }
+    return [...names.values()].sort((a, b) => a.localeCompare(b))
+  }, [openAccounts, closedAccounts])
+  const openGroupMenu = (focus = false) => {
+    setGroupMenuOpen(true)
+    if (focus) queueMicrotask(() => groupMenuRef.current?.querySelector<HTMLButtonElement>('button')?.focus())
+  }
+  const closeGroupMenu = () => { setGroupMenuOpen(false); groupItemRef.current?.focus() }
   const reorderAccounts = useReorderAccounts()
   const [closedAccountsOpen, setClosedAccountsOpen] = useState(false)
   const blocks: { group: string | null; accounts: Account[] }[] = []
@@ -85,7 +149,9 @@ export function AccountRail({
     0,
   )
 
+  const menuAccount = menu?.account
   return (
+    <AccountMenuContext value={{ health, open: openMenu }}>
     <aside className="bp-sidebar">
       <div className="bp-brand">
         <img className="bp-brand-mark" src="/icon.png" alt="Weft" width={36} height={36} />
@@ -161,7 +227,38 @@ export function AccountRail({
         </Button>
         <PlaidConnectionWorkflow compact onError={onError} />
       </div>
+      {menuAccount && <>
+        <span ref={menuAnchorRef} className="bp-context-anchor" style={{ left: menu.left, top: menu.top }} aria-hidden="true" />
+        <ActionMenu anchorRef={menuAnchorRef} menuRef={menuRef} width={196} relatedRefs={[groupMenuRef]} aria-label={`${menuAccount.name} actions`} onDismiss={(reason) => {
+          if (reason === 'escape' && groupMenuOpen) closeGroupMenu()
+          else closeMenu(reason !== 'outside')
+        }}>
+          <ActionMenuItem onFocus={() => setGroupMenuOpen(false)} onPointerEnter={() => setGroupMenuOpen(false)} onClick={() => choose('edit')}>Edit account…</ActionMenuItem>
+          <ActionMenuItem onFocus={() => setGroupMenuOpen(false)} onPointerEnter={() => setGroupMenuOpen(false)} onClick={() => choose('logo')}>Change logo…</ActionMenuItem>
+          <ActionMenuItem ref={groupItemRef} aria-haspopup="menu" aria-expanded={groupMenuOpen} onPointerEnter={() => openGroupMenu()} onClick={() => openGroupMenu(true)} onKeyDown={(event) => {
+            if (isComposingKey(event.nativeEvent)) return
+            if (event.key === 'ArrowRight') { event.preventDefault(); event.stopPropagation(); openGroupMenu(true) }
+          }}>Move to group <ChevronRight aria-hidden="true" /></ActionMenuItem>
+          {menuAccount.type === 'loan' && <ActionMenuItem onFocus={() => setGroupMenuOpen(false)} onPointerEnter={() => setGroupMenuOpen(false)} onClick={() => choose('loan')}>Loan details…</ActionMenuItem>}
+          <ActionMenuItem onFocus={() => setGroupMenuOpen(false)} onPointerEnter={() => setGroupMenuOpen(false)} onClick={() => choose('export')}>Export…</ActionMenuItem>
+          {menuAccount.plaid_connection && <ActionMenuItem onFocus={() => setGroupMenuOpen(false)} onPointerEnter={() => setGroupMenuOpen(false)} onClick={() => choose('refresh')}>Refresh from bank…</ActionMenuItem>}
+          {menuAccount.plaid_connection && repairableAccountIds.has(menuAccount.id) && <ActionMenuItem onFocus={() => setGroupMenuOpen(false)} onPointerEnter={() => setGroupMenuOpen(false)} onClick={() => choose('repair')}>Repair connection…</ActionMenuItem>}
+          {!menuAccount.plaid_connection && !menuAccount.closed && <ActionMenuItem onFocus={() => setGroupMenuOpen(false)} onPointerEnter={() => setGroupMenuOpen(false)} onClick={() => choose('connect')}>Connect to bank…</ActionMenuItem>}
+          {menuAccount.closed
+            ? <ActionMenuItem onFocus={() => setGroupMenuOpen(false)} onPointerEnter={() => setGroupMenuOpen(false)} onClick={() => choose('reopen')}>Reopen account</ActionMenuItem>
+            : <ActionMenuItem onFocus={() => setGroupMenuOpen(false)} onPointerEnter={() => setGroupMenuOpen(false)} onClick={() => choose('close')}>Close account…</ActionMenuItem>}
+        </ActionMenu>
+        {groupMenuOpen && <ActionMenu anchorRef={groupItemRef} menuRef={groupMenuRef} relatedRefs={[menuRef]} width={196} placement="side" autoFocus={false} aria-label={`Move ${menuAccount.name} to group`} onDismiss={(reason) => {
+          if (reason === 'escape') closeGroupMenu()
+          else closeMenu(reason !== 'outside')
+        }} onKeyDown={(event) => {
+          if (event.key === 'ArrowLeft') { event.preventDefault(); event.stopPropagation(); closeGroupMenu() }
+        }}>
+          {[null, ...groupNames].map((group) => <ActionMenuItem key={group ?? ''} role="menuitemradio" aria-checked={group === menuAccount.group_name} onClick={() => chooseGroup(group)}>{group ?? 'No group'}{group === menuAccount.group_name && <Check aria-hidden="true" />}</ActionMenuItem>)}
+        </ActionMenu>}
+      </>}
     </aside>
+    </AccountMenuContext>
   )
 }
 
@@ -199,19 +296,21 @@ function AccountGroup({ name, accounts, sortable, showAccountIcons, highlightBan
 }
 
 export function AccountRailItem({ account, showAccountIcons, highlightBankDifferences, compact, selected, onSelect }: { account: Account; showAccountIcons: boolean; highlightBankDifferences: boolean; compact: boolean; selected: boolean; onSelect: () => void }) {
+  const menu = use(AccountMenuContext)
   const typeLabel = accountTypeLabel(account.type)
+  const health = menu.health.get(account.id)
   const difference = highlightBankDifferences ? accountBankDifference(account) : null
-  const warning = difference === null ? null : `Bank difference ${money(difference, true)}`
+  const warning = health ? HEALTH_REASON[health] : difference === null ? null : `Bank difference ${money(difference, true)}`
   const title = [compact ? typeLabel : null, warning].filter(Boolean).join(' · ') || undefined
   const showIcon = showAccountIcons || (!compact && warning !== null)
   return (
-    <button className={`bp-account${showIcon ? '' : ' is-iconless'}${compact ? ' is-compact' : ''}${selected ? ' is-selected' : ''}${warning ? ' has-bank-difference' : ''}`} type="button" title={title} data-sortable-account-ids={JSON.stringify([account.id])} onClick={onSelect}>
+    <button className={`bp-account${showIcon ? '' : ' is-iconless'}${compact ? ' is-compact' : ''}${selected ? ' is-selected' : ''}${health ? ' has-connection-failure' : warning ? ' has-bank-difference' : ''}`} type="button" title={title} data-sortable-account-ids={JSON.stringify([account.id])} onClick={onSelect} onContextMenu={(event) => menu.open(account, event)}>
       {!compact && warning
-        ? <span className="bp-account-icon bp-account-icon--warning" aria-hidden="true"><TriangleAlert /></span>
+        ? <span className={`bp-account-icon bp-account-icon--${health ? 'danger' : 'warning'}`} aria-hidden="true"><TriangleAlert /></span>
         : showAccountIcons && <AccountIcon account={account} />}
       <span className="bp-account-copy">
         <span className="bp-account-name">
-          {compact && warning && <TriangleAlert aria-hidden="true" />}
+          {compact && warning && <TriangleAlert className={health ? 'is-danger' : undefined} aria-hidden="true" />}
           <strong>{account.name}</strong>
           {warning && <span className="bp-visually-hidden">{warning}</span>}
         </span>
